@@ -556,9 +556,6 @@ std::vector<Lattice::Node *> Lattice::Sample(float inv_theta) {
   return results;
 }
 
-// Model::Model() {}
-// Model::~Model() {}
-
 void Model::PopulateNodes(Lattice *lattice) const {
   auto get_chars_length = [&lattice](int begin_pos, const char *end) {
     int pos = begin_pos;
@@ -687,24 +684,7 @@ Model::Model(const ModelProto &model_proto) {
 Model::~Model() {}
 
 EncodeResult Model::Encode(absl::string_view normalized) const {
-  if (encoder_version_ == EncoderVersion::kOptimized) {
-    return EncodeOptimized(normalized);
-  }
-
-  if (!status().ok() || normalized.empty()) {
-    return {};
-  }
-
-  Lattice lattice;
-  lattice.SetSentence(normalized);
-  PopulateNodes(&lattice);
-
-  EncodeResult results;
-  for (const auto *node : lattice.Viterbi().first) {
-    results.emplace_back(node->piece, node->id);
-  }
-
-  return results;
+  return EncodeOptimized(normalized);
 }
 
 NBestEncodeResult Model::NBestEncode(absl::string_view normalized,
