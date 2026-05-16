@@ -45,9 +45,9 @@ endif()
 
 add_compile_definitions($<$<CONFIG:Release>:NDEBUG>)
 
-if (SPM_ENABLE_SHARED)
+if (SPM_ENABLE_SHARED AND NOT WIN32)
  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-endif() 
+endif()
 
 # Includes processor name to avoid conflicts.
 set(CPACK_PACKAGE_FILE_NAME

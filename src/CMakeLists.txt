@@ -53,7 +53,7 @@ if (SPM_PROTOBUF_PROVIDER STREQUAL "internal")
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/protobuf-lite/zero_copy_stream.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/protobuf-lite/zero_copy_stream_impl.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/protobuf-lite/zero_copy_stream_impl_lite.cc)
-  if (MSVC)
+  if (WIN32)
     add_definitions("/DHAVE_PTHREAD /wd4018 /wd4514")
   else()
     add_definitions("-pthread -DHAVE_PTHREAD=1 -Wno-sign-compare -Wno-deprecated-declarations")
@@ -251,7 +251,7 @@ endif()
 set_target_properties(sentencepiece-static PROPERTIES OUTPUT_NAME "sentencepiece")
 set_target_properties(sentencepiece_train-static PROPERTIES OUTPUT_NAME "sentencepiece_train")
 
-if (NOT MSVC)
+if (NOT WIN32)
   set(CMAKE_CXX_FLAGS "-O3 -Wall -fPIC ${CMAKE_CXX_FLAGS}")
   set_source_files_properties(
     sentencepiece.pb.cc sentencepiece_model.pb.cc
