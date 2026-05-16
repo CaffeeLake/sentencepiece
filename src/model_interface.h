@@ -54,7 +54,6 @@ class ModelProto;
 class ModelInterface {
  public:
   using PieceToIdMap = absl::flat_hash_map<absl::string_view, int>;
-  //                                           string_util::string_view_hash>;
 
   absl::string_view unk_piece() const;
   absl::string_view bos_piece() const;

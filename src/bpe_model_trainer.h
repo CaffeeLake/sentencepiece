@@ -117,6 +117,8 @@ class Trainer : public TrainerInterface {
   // if this bigram is not |best|.
   void ResetFreq(int sid, int left, int right, const Symbol *best);
 
+  util::Status AcceptSymbol(Symbol *symbol);
+
   // Updates |active_symbols_| by copying the top 5% frequent symbols in
   // symbols_cache_.
   void UpdateActiveSymbols();
