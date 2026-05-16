@@ -203,8 +203,8 @@ util::Status Builder::CompileCharsMap(const CharsMap &chars_map,
   }
 
   Darts::DoubleArray trie;
-  RET_CHECK_EQ(0, trie.build(key.size(), const_cast<char **>(&key[0]),
-                                   nullptr, &value[0]))
+  RET_CHECK_EQ(0, trie.build(key.size(), const_cast<char **>(&key[0]), nullptr,
+                             &value[0]))
       << "cannot build double-array";
 
   int max_nodes_size = 0;

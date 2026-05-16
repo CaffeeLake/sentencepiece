@@ -552,7 +552,7 @@ util::Status SentencePieceProcessor::SampleEncodeAndScore(
 util::Status SentencePieceProcessor::PopulateSentencePieceText(
     absl::string_view input, absl::string_view normalized,
     const std::vector<size_t> &norm_to_orig, const EncodeResult &result,
-    SentencePieceText *spt) const {
+    SentencePieceText *spt, bool skip_surface) const {
   size_t consumed = 0;
   bool is_prev_unk = false;
   for (const auto &p : result) {
@@ -585,19 +585,19 @@ util::Status SentencePieceProcessor::PopulateSentencePieceText(
 
       if (is_unk && model_->ByteFallbackEnabled()) {
         // Decomposes an unknown piece into UTF-8 bytes
-        for (int i = 0; i < w.size(); ++i) {
+        for (size_t i = 0; i < w.size(); ++i) {
           // Create a byte piece
           const char b = w[i];
-          auto *sp = spt->add_pieces();
-          const auto piece = ByteToPiece(b);
-          auto sp_id = model_->PieceToId(piece);
-          sp->set_piece(piece.data(), piece.size());
+          SentencePieceText::SentencePiece *sp = spt->add_pieces();
+          std::string &piece = *sp->mutable_piece();
+          piece = ByteToPiece(b);
+          int sp_id = model_->PieceToId(piece);
           sp->set_id(sp_id);
 
           // The last byte piece holds the surface of the original unknown
           // character. The other byte pieces have no surface.
           if (i == w.size() - 1) {
-            sp->set_surface(surface.data(), surface.size());
+            if (!skip_surface) sp->set_surface(surface.data(), surface.size());
             sp->set_begin(orig_begin);
             sp->set_end(orig_end);
           } else {
@@ -613,14 +613,14 @@ util::Status SentencePieceProcessor::PopulateSentencePieceText(
         // since known pieces never consist of unknown characters.
         if (is_prev_unk && is_unk) {
           auto *sp = spt->mutable_pieces(spt->pieces_size() - 1);
-          sp->set_piece(absl::StrCat(sp->piece(), w));
-          sp->set_surface(absl::StrCat(sp->surface(), surface));
+          sp->mutable_piece()->append(w);
+          if (!skip_surface) sp->mutable_surface()->append(surface);
           sp->set_end(orig_end);
         } else {
           auto *sp = spt->add_pieces();
           sp->set_piece(w.data(), w.size());
           sp->set_id(id);
-          sp->set_surface(surface.data(), surface.size());
+          if (!skip_surface) sp->set_surface(surface.data(), surface.size());
           sp->set_begin(orig_begin);
           sp->set_end(orig_end);
         }
@@ -867,7 +867,7 @@ util::Status SentencePieceProcessor::Decode(
       } else {
         const absl::string_view utf8 =
             absl::string_view(bytes).substr(offset, consumed);
-        for (int j = 0; j < consumed; j++) {
+        for (size_t j = 0; j < consumed; j++) {
           // The last byte piece holds the surface of the original unknown
           // character. The other byte pieces hold an empty string as
           // surface.

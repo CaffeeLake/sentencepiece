@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.!
 
+#include "word_model_trainer.h"
+
 #include <cmath>
 #include <string>
 
@@ -19,7 +21,6 @@
 #include "third_party/absl/strings/string_view.h"
 #include "util.h"
 #include "word_model.h"
-#include "word_model_trainer.h"
 
 namespace sentencepiece {
 namespace word {

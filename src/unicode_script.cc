@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.!
 
-#include "third_party/absl/container/flat_hash_map.h"
 #include "unicode_script.h"
+
+#include "third_party/absl/container/flat_hash_map.h"
 #include "unicode_script_map.h"
 #include "util.h"
 
