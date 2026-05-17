@@ -22,6 +22,7 @@
 #include "pretokenizer_for_training.h"
 #include "third_party/absl/container/flat_hash_set.h"
 #include "third_party/absl/flags/flag.h"
+#include "third_party/absl/hash/hash.h"
 #include "third_party/absl/strings/str_join.h"
 #include "third_party/absl/strings/str_replace.h"
 #include "util.h"
@@ -61,7 +62,7 @@ Trainer::Symbol* Trainer::GetPairSymbol(const Symbol* left,
     return nullptr;
   }
 
-  const uint64_t fp = port::FingerprintCat(left->fp, right->fp);
+  const uint64_t fp = absl::HashOf(left->fp, right->fp);
   const auto it = symbols_cache_.find(fp);
   if (it != symbols_cache_.end()) {
     return it->second;

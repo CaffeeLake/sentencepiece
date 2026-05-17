@@ -999,8 +999,7 @@ TEST(SentencePieceProcessorTest, EndToEndTest) {
   }
 
   SentencePieceProcessor sp;
-  EXPECT_TRUE(
-      sp.Load(util::JoinPath(::testing::TempDir(), "model")).ok());
+  EXPECT_TRUE(sp.Load(util::JoinPath(::testing::TempDir(), "model")).ok());
 
   EXPECT_EQ(model_proto.SerializeAsString(),
             sp.model_proto().SerializeAsString());
