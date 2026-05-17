@@ -56,7 +56,7 @@ const char kReplacementCharacter[] = "\xef\xbf\xbd";
 
 std::vector<absl::string_view> ToPieceArray(const std::vector<std::string> &v) {
   std::vector<absl::string_view> out(v.size());
-  for (int i = 0; i < v.size(); ++i) out[i] = v[i];
+  for (size_t i = 0; i < v.size(); ++i) out[i] = v[i];
   return out;
 }
 
@@ -71,7 +71,7 @@ void ConvertToUnicodeSpansInternal(SentencePieceText *spt) {
     const size_t mblen =
         std::min(str.size(), static_cast<size_t>(std::max<int>(
                                  1, string_util::OneCharLen(str.data()))));
-    for (int i = prev; i < prev + mblen; ++i) {
+    for (size_t i = prev; i < prev + mblen; ++i) {
       utf8_to_unicode[i] = ulen;
     }
     ++ulen;

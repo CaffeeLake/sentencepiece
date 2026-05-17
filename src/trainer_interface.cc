@@ -482,7 +482,7 @@ END:
     {
       auto pool = std::make_unique<ThreadPool>(num_workers);
       pool->StartWorkers();
-      for (int n = 0; n < num_workers; ++n) {
+      for (size_t n = 0; n < num_workers; ++n) {
         pool->Schedule([&, n]() {
           // One per thread generator.
           auto *generator = random::GetRandomGenerator();

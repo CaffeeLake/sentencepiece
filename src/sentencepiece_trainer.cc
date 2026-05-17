@@ -375,7 +375,7 @@ void ConvertToUnicodeAlignment(absl::string_view orig, absl::string_view norm,
       const size_t mblen =
           std::min(str.size(), static_cast<size_t>(std::max<int>(
                                    1, string_util::OneCharLen(str.data()))));
-      for (int i = prev; i < prev + mblen; ++i) {
+      for (size_t i = prev; i < prev + mblen; ++i) {
         utf8_to_unicode[i] = ulen;
       }
       ++ulen;
@@ -391,7 +391,7 @@ void ConvertToUnicodeAlignment(absl::string_view orig, absl::string_view norm,
   if (orig_offsets.empty() || norm_offsets.empty()) return;
 
   std::vector<size_t> result(norm_offsets.back() + 1, 0);
-  for (int i = 0; i < norm_to_orig->size(); ++i) {
+  for (size_t i = 0; i < norm_to_orig->size(); ++i) {
     result[norm_offsets[i]] = orig_offsets[(*norm_to_orig)[i]];
   }
   *norm_to_orig = std::move(result);

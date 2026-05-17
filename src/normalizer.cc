@@ -202,7 +202,7 @@ std::pair<absl::string_view, int> Normalizer::NormalizePrefix(
   }
 
   size_t longest_length = 0;
-  int longest_value = 0;
+  size_t longest_value = 0;
 
   if (trie_ != nullptr) {
     // Allocates trie_results in stack, which makes the encoding speed 36%

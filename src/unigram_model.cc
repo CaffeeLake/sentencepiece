@@ -505,7 +505,7 @@ std::vector<Lattice::LatticePathWithScore> Lattice::NBest(size_t nbest_size,
       // Map between old Hypothesis* and new Hypothesis*.
       absl::flat_hash_map<const Hypothesis *, Hypothesis *> clone_map;
 
-      const int size = std::min<int>(kMinAgendaSize, nbest_size * 10);
+      const size_t size = std::min<size_t>(kMinAgendaSize, nbest_size * 10);
       shrink_count++;
       LOG(WARNING) << "Too big agenda size " << agenda.size()
                    << ". Shrinking (round " << shrink_count << ") down to "
