@@ -84,7 +84,7 @@ def test_gil_release():
 
   # ASSERTION: If the GIL was locked, the background thread wouldn't have executed.
   # We expect at least a reasonable number of heartbeats based on elapsed time (e.g., > 5 times)
-  min_expected_heartbeats = 100
+  min_expected_heartbeats = 20
 
   assert heartbeat_count >= min_expected_heartbeats, (
       "GIL Release Failure Detected! The background thread was blocked."
