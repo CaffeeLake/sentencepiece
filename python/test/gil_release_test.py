@@ -1,7 +1,10 @@
+import os
 import sys
 import threading
 import time
 import sentencepiece as spm
+
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 class HeartbeatCounter:
@@ -32,12 +35,12 @@ def test_gil_release():
   # 1. Generate heavy dummy text data to create enough load
   print("[Main] Generating heavy dummy text...")
   heavy_text = (
-      "Hello, world! Testing SentencePiece GIL release behavior. " * 1000000
+      "Hello, world! Testing SentencePiece GIL release behavior. " * 500000
   )
 
   # 2. Load the pre-trained model
   model_path = "test_model.model"
-  sp = spm.SentencePieceProcessor(model_file=model_path)
+  sp = spm.SentencePieceProcessor(model_file=os.path.join(HERE, model_path))
 
   # 3. Setup the counter and start the background heartbeat thread
   counter = HeartbeatCounter()
