@@ -87,7 +87,14 @@ def test_gil_release():
   # We apply a 50% safety margin to account for OS scheduling fluctuations.
   sleep_interval = 0.01
   theoretical_max = elapsed_time / sleep_interval
-  min_expected_heartbeats = int(theoretical_max * 0.5)
+
+  is_mac = sys.platform == "darwin"
+  # Adjust efficiency margin based on OS
+  # macOS has low timer precision for short sleeps and aggressive core scheduling,
+  # so we lower the expected margin to 10% (0.1). Other OS use 50% (0.5).
+  margin = 0.1 if is_mac else 0.5
+
+  min_expected_heartbeats = int(theoretical_max * margin)
 
   # Edge case: If the execution was extremely fast, ensure a floor value of at least 2
   if min_expected_heartbeats < 2:
