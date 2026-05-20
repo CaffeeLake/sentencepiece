@@ -82,13 +82,27 @@ def test_gil_release():
       " execution."
   )
 
-  # ASSERTION: If the GIL was locked, the background thread wouldn't have executed.
-  # We expect at least a reasonable number of heartbeats based on elapsed time (e.g., > 5 times)
-  min_expected_heartbeats = 20
+  # Calculate expected heartbeats dynamically based on the actual elapsed time.
+  # Loop interval is 0.01s, meaning 100 heartbeats/sec theoretically.
+  # We apply a 50% safety margin to account for OS scheduling fluctuations.
+  sleep_interval = 0.01
+  theoretical_max = elapsed_time / sleep_interval
+  min_expected_heartbeats = int(theoretical_max * 0.5)
 
+  # Edge case: If the execution was extremely fast, ensure a floor value of at least 2
+  if min_expected_heartbeats < 2:
+    min_expected_heartbeats = 2
+
+  print(
+      f"[Main] Dynamic threshold set to {min_expected_heartbeats} heartbeats"
+      f" (based on {elapsed_time:.4f}s elapsed time)."
+  )
+
+  # ASSERTION
   assert heartbeat_count >= min_expected_heartbeats, (
-      "GIL Release Failure Detected! The background thread was blocked."
-      f" Expected at least {min_expected_heartbeats} heartbeats, but only got"
+      "GIL Release Failure Detected! The background thread was heavily"
+      f" blocked.\nBased on execution time ({elapsed_time:.4f}s), expected at"
+      f" least {min_expected_heartbeats} heartbeats, but only got"
       f" {heartbeat_count}."
   )
 
