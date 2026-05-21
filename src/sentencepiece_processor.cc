@@ -62,6 +62,9 @@ constexpr absl::string_view kDefaultUnknownSymbol = " \xE2\x81\x87 ";
 // REPLACEMENT CHARACTER (U+FFFD) in UTF-8.
 constexpr absl::string_view kReplacementCharacter = "\xef\xbf\xbd";
 
+// maximum nbest or sampling size.
+constexpr int kMaxNBestSize = 512;
+
 std::vector<absl::string_view> ToPieceArray(const std::vector<std::string> &v) {
   std::vector<absl::string_view> out(v.size());
   for (size_t i = 0; i < v.size(); ++i) out[i] = v[i];
@@ -731,6 +734,9 @@ util::Status SentencePieceProcessor::NBestEncode(
     NBestSentencePieceText *nbest_spt) const {
   RET_CHECK_STATUS_PROTO(nbest_spt);
 
+  RET_CHECK_LE(nbest_size, kMaxNBestSize)
+      << "nbest_size must be nbest_size <= " << kMaxNBestSize;
+
   std::string normalized;
   std::vector<size_t> norm_to_orig;
   RETURN_IF_ERROR(normalizer_->Normalize(input, &normalized, &norm_to_orig));
@@ -756,7 +762,10 @@ util::Status SentencePieceProcessor::SampleEncode(
     SentencePieceText *spt) const {
   RET_CHECK_STATUS_PROTO(spt);
 
-  RET_CHECK_LE(nbest_size, 512) << "nbest_size must be nbest_size <= 512";
+  RET_CHECK(!std::isnan(alpha));
+  RET_CHECK_GE(alpha, 0.0);
+  RET_CHECK_LE(nbest_size, kMaxNBestSize)
+      << "nbest_size must be nbest_size <= " << kMaxNBestSize;
 
   std::string normalized;
   std::vector<size_t> norm_to_orig;
@@ -800,6 +809,12 @@ util::Status SentencePieceProcessor::SampleEncode(
 util::Status SentencePieceProcessor::SampleEncodeAndScore(
     absl::string_view input, int samples, float alpha, bool wor,
     bool include_best, NBestSentencePieceText *samples_spt) const {
+  RET_CHECK(!std::isnan(alpha));
+  RET_CHECK_GE(alpha, 0.0);
+  RET_CHECK_GE(samples, 0);
+  RET_CHECK_LE(samples, kMaxNBestSize)
+      << "samples must be nbest_size <= " << kMaxNBestSize;
+
   RET_CHECK(model_->IsSampleEncodeAndScoreAvailable())
       << "SampleEncodeAndScore is not available for the current model.";
   std::string normalized;
@@ -823,6 +838,8 @@ util::Status SentencePieceProcessor::SampleEncodeAndScore(
 util::Status SentencePieceProcessor::CalculateEntropy(absl::string_view input,
                                                       float alpha,
                                                       float *entropy) const {
+  RET_CHECK(!std::isnan(alpha));
+  RET_CHECK_GE(alpha, 0.0);
   RET_CHECK(model_->IsCalculateEntropyAvailable())
       << "CalculateEntropy is not available for the current model.";
   std::string normalized;
