@@ -82,17 +82,30 @@ def test_gil_release():
       " execution."
   )
 
-  # Calculate expected heartbeats dynamically based on the actual elapsed time.
-  # Loop interval is 0.01s, meaning 100 heartbeats/sec theoretically.
-  # We apply a 50% safety margin to account for OS scheduling fluctuations.
-  sleep_interval = 0.01
-  theoretical_max = elapsed_time / sleep_interval
+  # Check if GIL is explicitly disabled (Python 3.13+ free-threaded build)
+  # sys._is_gil_enabled() returns False in NoGIL (free-threaded) mode.
+  is_gil_disabled = False
+  if hasattr(sys, "_is_gil_enabled"):
+    is_gil_disabled = not sys._is_gil_enabled()
 
-  is_mac = sys.platform == "darwin"
-  # Adjust efficiency margin based on OS
-  # macOS has low timer precision for short sleeps and aggressive core scheduling,
-  # so we lower the expected margin to 10% (0.1). Other OS use 50% (0.5).
-  margin = 0.1 if is_mac else 0.5
+  if is_gil_disabled:
+    print(
+        "[Main] Detected Free-Threaded (NoGIL) environment. True parallelism is"
+        " active."
+    )
+    # In a NoGIL environment, we only need to ensure that the background thread
+    # wasn't completely deadlocked or starved by the native C++ execution.
+    min_expected_heartbeats = 1
+  else:
+    # Standard GIL environment logic
+    is_mac = sys.platform == "darwin"
+    sleep_interval = 0.01
+    theoretical_max = elapsed_time / sleep_interval
+    margin = 0.1 if is_mac else 0.5
+    min_expected_heartbeats = int(theoretical_max * margin)
+
+    if min_expected_heartbeats < 1:
+      min_expected_heartbeats = 1
 
   min_expected_heartbeats = int(theoretical_max * margin)
 

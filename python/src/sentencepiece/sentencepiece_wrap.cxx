@@ -3683,6 +3683,7 @@ int ToSwigError(sentencepiece::util::StatusCode code) {
   return SWIG_RuntimeError;
 }
 
+#ifndef Py_GIL_DISABLED
 // RAII class to release GIL.
 // Release GIL in contractor and acquire GIL in destractor.
 class ScopedGILRelease {
@@ -3702,6 +3703,19 @@ public:
 private:
   PyGILState_STATE state_;
 };
+#else
+class ScopedGILRelease {
+public:
+  ScopedGILRelease() {}
+  ~ScopedGILRelease() {}
+};
+
+class ScopedGILAcquire {
+public:
+  ScopedGILAcquire() {}
+  ~ScopedGILAcquire() {}
+};
+#endif  // Py_GIL_DISABLED
 
 class PySentenceIterator : public sentencepiece::SentenceIterator {
   public:
