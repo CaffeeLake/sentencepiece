@@ -107,8 +107,6 @@ def test_gil_release():
     if min_expected_heartbeats < 1:
       min_expected_heartbeats = 1
 
-  min_expected_heartbeats = int(theoretical_max * margin)
-
   # Edge case: If the execution was extremely fast, ensure a floor value of at least 2
   if min_expected_heartbeats < 2:
     min_expected_heartbeats = 2
