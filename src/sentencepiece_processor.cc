@@ -309,6 +309,7 @@ util::Status SentencePieceProcessor::status() const {
 
 util::Status SentencePieceProcessor::SetVocabulary(
     const std::vector<absl::string_view> &valid_vocab) {
+  LOG(WARNING) << "SetVocabulary will be deprecated in v0.2.3";
   RETURN_IF_ERROR(status());
 
   // TODO(taku): supports vocabulary constraint in BPE model.
@@ -339,6 +340,7 @@ util::Status SentencePieceProcessor::SetVocabulary(
 }
 
 util::Status SentencePieceProcessor::ResetVocabulary() {
+  LOG(WARNING) << "ResetVocabulary will be deprecated in v0.2.3";
   RETURN_IF_ERROR(status());
   for (auto &piece : *(model_proto_->mutable_pieces())) {
     if (piece.type() == ModelProto::SentencePiece::UNUSED)
@@ -350,6 +352,7 @@ util::Status SentencePieceProcessor::ResetVocabulary() {
 
 util::Status SentencePieceProcessor::LoadVocabulary(absl::string_view filename,
                                                     int threshold) {
+  LOG(WARNING) << "LoadVocabulary will be deprecated in v0.2.3";
   auto input = filesystem::NewReadableFile(filename);
   RETURN_IF_ERROR(input->status());
 

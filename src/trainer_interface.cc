@@ -460,6 +460,7 @@ END:
 
   // If DP is required, add the noise/clip the input.
   if (trainer_spec_.enable_differential_privacy()) {
+    LOG(WARNING) << "Differential privacy feature will be deprecated in v0.2.3";
     if (trainer_spec_.input_format() != "tsv") {
       LOG(ERROR)
           << "Dp version will not work correctly with text input format.";
