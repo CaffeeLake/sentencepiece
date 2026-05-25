@@ -434,7 +434,6 @@ END:
     RET_CHECK(!sentences_.empty());
     {
       auto pool = std::make_unique<ThreadPool>(trainer_spec_.num_threads());
-      pool->StartWorkers();
       for (int n = 0; n < trainer_spec_.num_threads(); ++n) {
         pool->Schedule([&, n]() {
           for (size_t i = n; i < sentences_.size();
@@ -482,7 +481,6 @@ END:
 
     {
       auto pool = std::make_unique<ThreadPool>(num_workers);
-      pool->StartWorkers();
       for (size_t n = 0; n < num_workers; ++n) {
         pool->Schedule([&, n]() {
           // One per thread generator.

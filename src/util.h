@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <queue>
 #include <random>
 #include <sstream>
 #include <string>
@@ -31,6 +32,8 @@
 #include "common.h"
 #include "config.h"
 #include "sentencepiece_processor.h"
+#include "third_party/absl/base/thread_annotations.h"
+#include "third_party/absl/functional/any_invocable.h"
 #include "third_party/absl/numeric/bits.h"
 #include "third_party/absl/random/random.h"
 #include "third_party/absl/strings/ascii.h"
@@ -40,6 +43,7 @@
 #include "third_party/absl/strings/str_join.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/absl/strings/strip.h"
+#include "third_party/absl/synchronization/mutex.h"
 
 static constexpr uint32_t kUnicodeError = 0xFFFD;
 
@@ -348,18 +352,55 @@ void STLDeleteElements(std::vector<T *> *vec) {
 
 class ThreadPool {
  public:
-  ThreadPool(int32_t n) {}
-  virtual ~ThreadPool() {
-    for (auto &task : tasks_) {
-      task.join();
+  explicit ThreadPool(int num_threads) {
+    threads_.reserve(num_threads);
+    for (int i = 0; i < num_threads; ++i) {
+      threads_.push_back(std::thread(&ThreadPool::WorkLoop, this));
     }
   }
 
-  void Schedule(std::function<void()> closure) { tasks_.emplace_back(closure); }
-  void StartWorkers() {}
+  ThreadPool(const ThreadPool &) = delete;
+  ThreadPool &operator=(const ThreadPool &) = delete;
+
+  ~ThreadPool() {
+    {
+      absl::MutexLock l(mu_);
+      for (size_t i = 0; i < threads_.size(); i++) {
+        queue_.push(nullptr);  // Shutdown signal.
+      }
+    }
+    for (auto &thread : threads_) thread.join();
+  }
+
+  void Schedule(absl::AnyInvocable<void()> func) {
+    absl::MutexLock l(mu_);
+    queue_.push(std::move(func));
+  }
 
  private:
-  std::vector<std::thread> tasks_;
+  bool WorkAvailable() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return !queue_.empty();
+  }
+
+  void WorkLoop() {
+    while (true) {
+      absl::AnyInvocable<void()> func;
+      {
+        absl::MutexLock l(mu_);
+        mu_.Await(absl::Condition(this, &ThreadPool::WorkAvailable));
+        func = std::move(queue_.front());
+        queue_.pop();
+      }
+      if (func == nullptr) {  // Shutdown signal.
+        break;
+      }
+      func();
+    }
+  }
+
+  absl::Mutex mu_;
+  std::queue<absl::AnyInvocable<void()>> queue_ ABSL_GUARDED_BY(mu_);
+  std::vector<std::thread> threads_;
 };
 
 namespace log_domain {
