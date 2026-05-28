@@ -1,3 +1,17 @@
+// Copyright 2016 Google Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.!
+
 #include <string>
 #include <vector>
 
@@ -63,17 +77,18 @@ void BM_Encode(benchmark::State& state, absl::string_view model_filename,
       util::JoinPath(testing::SrcDir(), input_filename);
   std::string input = LoadInput(input_fullpath);
   std::vector<int> ids;
-  ThreadPool thread_pool(kNumThreads);
+  //  ThreadPool thread_pool(kNumThreads);
   for (auto s : state) {
     benchmark::DoNotOptimize(input);
 
-    //
-    //    if constexpr (kMode == BenchmarkMode::kParallel) {
-    //      result = processor.ParallelEncode(input, kChunkLength, thread_pool,
-    //      &ids);
-    //    } else {
-    auto result = processor.Encode(input, &ids);
-    //    }
+    util::Status result;
+    if constexpr (kMode == BenchmarkMode::kParallel) {
+      result = processor.ParallelEncode(input, kChunkLength, kNumThreads, &ids);
+      // result = processor.ParallelEncode(input, kChunkLength, thread_pool,
+      // &ids);
+    } else {
+      result = processor.Encode(input, &ids);
+    }
 
     benchmark::DoNotOptimize(result);
   }

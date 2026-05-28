@@ -138,6 +138,17 @@ UnicodeText UTF8ToUnicodeText(absl::string_view utf8);
 
 std::string UnicodeTextToUTF8(const UnicodeText &utext);
 
+struct UnicodeTextAndOffsets {
+  UnicodeText unicode_text;
+  std::vector<uint32_t> offsets;
+};
+
+// - unicode_text is the UTF-8 string converted to UnicodeText.
+// - offsets.size() == unicode_text.size() + 1
+// - offsets[0] is always 0.
+// - offsets[i] is the offset of unicode_text[i] in the original UTF-8 string.
+UnicodeTextAndOffsets UTF8ToUnicodeTextAndOffsets(absl::string_view utf8);
+
 }  // namespace string_util
 
 // other map/ptr utilties
@@ -376,6 +387,8 @@ class ThreadPool {
     absl::MutexLock l(mu_);
     queue_.push(std::move(func));
   }
+
+  size_t num_threads() const { return threads_.size(); }
 
  private:
   bool WorkAvailable() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
