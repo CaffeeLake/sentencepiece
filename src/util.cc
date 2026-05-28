@@ -165,6 +165,26 @@ std::string UnicodeTextToUTF8(const UnicodeText &utext) {
   }
   return result;
 }
+
+UnicodeTextAndOffsets UTF8ToUnicodeTextAndOffsets(absl::string_view utf8) {
+  UnicodeTextAndOffsets ret;
+  size_t running_offset = 0;
+  ret.unicode_text.reserve(utf8.size());
+  ret.offsets.reserve(utf8.size() + 1);
+  ret.offsets.push_back(0);
+  const char *begin = utf8.data();
+  const char *end = utf8.data() + utf8.size();
+  while (begin < end) {
+    size_t mblen;
+    const char32 c = DecodeUTF8(begin, end, &mblen);
+    running_offset += mblen;
+    ret.unicode_text.push_back(c);
+    ret.offsets.push_back(running_offset);
+    begin += mblen;
+  }
+  return ret;
+}
+
 }  // namespace string_util
 
 namespace random {

@@ -149,6 +149,7 @@ set(SPM_TEST_SRCS
   model_interface_test.cc
   normalizer_test.cc
   sentencepiece_processor_test.cc
+  sentencepiece_processor_parallel_test.cc
   sentencepiece_trainer_test.cc
   test_main.cc
   testharness.cc
