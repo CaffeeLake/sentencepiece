@@ -35,6 +35,7 @@
 #include "third_party/absl/strings/str_cat.h"
 #include "third_party/absl/strings/str_format.h"
 #include "third_party/absl/strings/str_join.h"
+#include "third_party/absl/strings/match.h"
 #include "third_party/absl/strings/str_split.h"
 #include "unicode_script.h"
 #include "util.h"
@@ -797,6 +798,14 @@ util::Status TrainerInterface::InitMetaPieces() {
   for (const auto &w : trainer_spec_.user_defined_symbols()) {
     RETURN_IF_ERROR(
         insert_meta_symbol(w, ModelProto::SentencePiece::USER_DEFINED));
+    if (trainer_spec_.model_type() == TrainerSpec::WORD &&
+        normalizer_spec_.escape_whitespaces() &&
+        !absl::StartsWith(w, TrainerInterface::kWSStr)) {
+      // WORD model tokens include the escaped whitespace prefix.
+      RETURN_IF_ERROR(insert_meta_symbol(
+          absl::StrCat(TrainerInterface::kWSStr, w),
+          ModelProto::SentencePiece::USER_DEFINED));
+    }
   }
 
   if (trainer_spec_.byte_fallback()) {
