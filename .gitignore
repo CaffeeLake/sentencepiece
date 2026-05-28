@@ -73,6 +73,7 @@ libsentencepiece_train.so*
 python/bundled
 _sentencepiece.*.so
 third_party/abseil-cpp
+third_party/benchmark
 
 python/sentencepiece
 

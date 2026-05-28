@@ -321,6 +321,13 @@ if (SPM_BUILD_TEST)
     COMMAND $<TARGET_FILE:spm_test> --test_srcdir=${data_dir})
 endif()
 
+if (SPM_ENABLE_BENCHMARK)
+  add_executable(sentencepiece_processor_benchmarks_test
+        sentencepiece_processor_benchmarks_test.cc testharness.cc)
+  target_link_libraries(sentencepiece_processor_benchmarks_test
+        sentencepiece sentencepiece_train benchmark::benchmark)
+endif()
+
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
   set_xcode_property(spm_encode PRODUCT_BUNDLE_IDENTIFIER "SentencePiece" All)
   set_xcode_property(spm_decode PRODUCT_BUNDLE_IDENTIFIER "SentencePiece" All)
