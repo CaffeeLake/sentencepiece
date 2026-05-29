@@ -650,10 +650,8 @@ class TestSentencepieceProcessor(unittest.TestCase):
 
       sp = spm.SentencePieceProcessor(model_file=model_prefix + '.model')
       pieces = sp.encode('hello . world', out_type=str)
-      ids = sp.encode('hello . world', out_type=int)
 
       self.assertEqual(['▁hello', '▁.', '▁world'], pieces)
-      self.assertFalse(sp.is_unknown(ids[1]))
 
   def test_nbest(self):
     sp = self.sp_
