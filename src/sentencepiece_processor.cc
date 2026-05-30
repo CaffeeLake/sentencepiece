@@ -1366,27 +1366,24 @@ util::Status SentencePieceProcessor::ParallelEncodeInternal(
 }
 
 util::Status SentencePieceProcessor::ParallelEncode(
-    absl::string_view input, int chunk_len, int num_threads,
+    absl::string_view input, int chunk_len, ThreadPool &thread_pool,
     std::vector<std::string> *pieces) const {
-  ThreadPool thread_pool(num_threads);
   std::vector<int> ids;
   return ParallelEncodeInternal(input, chunk_len, thread_pool, pieces, &ids,
                                 nullptr);
 }
 
 util::Status SentencePieceProcessor::ParallelEncode(
-    absl::string_view input, int chunk_len, int num_threads,
+    absl::string_view input, int chunk_len, ThreadPool &thread_pool,
     std::vector<int> *ids) const {
-  ThreadPool thread_pool(num_threads);
   std::vector<std::string> pieces;
   return ParallelEncodeInternal(input, chunk_len, thread_pool, &pieces, ids,
                                 nullptr);
 }
 
 util::Status SentencePieceProcessor::ParallelEncode(
-    absl::string_view input, int chunk_len, int num_threads,
+    absl::string_view input, int chunk_len, ThreadPool &thread_pool,
     SentencePieceText *spt) const {
-  ThreadPool thread_pool(num_threads);
   return ParallelEncodeInternal(input, chunk_len, thread_pool, nullptr, nullptr,
                                 spt);
 }
