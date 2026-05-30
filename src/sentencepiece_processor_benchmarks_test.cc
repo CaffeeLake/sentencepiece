@@ -77,15 +77,13 @@ void BM_Encode(benchmark::State& state, absl::string_view model_filename,
       util::JoinPath(testing::SrcDir(), input_filename);
   std::string input = LoadInput(input_fullpath);
   std::vector<int> ids;
-  //  ThreadPool thread_pool(kNumThreads);
+  ThreadPool thread_pool(kNumThreads);
   for (auto s : state) {
     benchmark::DoNotOptimize(input);
 
     util::Status result;
     if constexpr (kMode == BenchmarkMode::kParallel) {
-      result = processor.ParallelEncode(input, kChunkLength, kNumThreads, &ids);
-      // result = processor.ParallelEncode(input, kChunkLength, thread_pool,
-      // &ids);
+      result = processor.ParallelEncode(input, kChunkLength, thread_pool, &ids);
     } else {
       result = processor.Encode(input, &ids);
     }
