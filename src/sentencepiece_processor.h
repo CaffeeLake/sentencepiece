@@ -138,6 +138,7 @@ class ModelInterface;
 class SentencePieceText;
 class ModelProto;
 class NormalizerSpec;
+class ThreadPool;
 
 class ThreadPool {
  public:
