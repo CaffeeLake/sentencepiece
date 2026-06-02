@@ -266,6 +266,70 @@ std::wstring Utf8ToWide(absl::string_view input) {
 #endif
 }  // namespace util
 
+class ThreadPool::Impl {
+ public:
+  explicit Impl(int num_threads) {
+    num_threads = std::min<int>(std::max<int>(1, num_threads), 1024);
+    threads_.reserve(num_threads);
+    for (int i = 0; i < num_threads; ++i) {
+      threads_.push_back(std::thread(&Impl::WorkLoop, this));
+    }
+  }
+
+  ~Impl() {
+    {
+      absl::MutexLock l(mu_);
+      for (size_t i = 0; i < threads_.size(); i++) {
+        queue_.push(nullptr);  // Shutdown signal.
+      }
+    }
+    for (auto &thread : threads_) thread.join();
+  }
+
+  void Schedule(absl::AnyInvocable<void()> func) {
+    absl::MutexLock l(mu_);
+    queue_.push(std::move(func));
+  }
+
+  size_t num_threads() const { return threads_.size(); }
+
+ private:
+  bool WorkAvailable() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return !queue_.empty();
+  }
+
+  void WorkLoop() {
+    while (true) {
+      absl::AnyInvocable<void()> func;
+      {
+        absl::MutexLock l(mu_);
+        mu_.Await(absl::Condition(this, &Impl::WorkAvailable));
+        func = std::move(queue_.front());
+        queue_.pop();
+      }
+      if (func == nullptr) {  // Shutdown signal.
+        break;
+      }
+      func();
+    }
+  }
+
+  absl::Mutex mu_;
+  std::queue<absl::AnyInvocable<void()>> queue_ ABSL_GUARDED_BY(mu_);
+  std::vector<std::thread> threads_;
+};
+
+ThreadPool::ThreadPool(size_t num_threads)
+    : impl_(std::make_unique<Impl>(num_threads)) {}
+
+ThreadPool::~ThreadPool() {}
+
+void ThreadPool::Schedule(std::function<void()> func) {
+  impl_->Schedule(std::move(func));
+}
+
+size_t ThreadPool::num_threads() const { return impl_->num_threads(); }
+
 namespace log_domain {
 double LogSum(const std::vector<double> &xs) {
   if (xs.empty()) {

@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -137,7 +138,20 @@ class ModelInterface;
 class SentencePieceText;
 class ModelProto;
 class NormalizerSpec;
-class ThreadPool;
+
+class ThreadPool {
+ public:
+  ThreadPool() = delete;
+  ThreadPool(size_t num_threads);
+  ~ThreadPool();
+
+  void Schedule(std::function<void()> func);
+  size_t num_threads() const;
+
+ private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+};
 
 namespace normalizer {
 class Normalizer;
