@@ -269,7 +269,7 @@ std::wstring Utf8ToWide(absl::string_view input) {
 class ThreadPool::Impl {
  public:
   explicit Impl(int num_threads) {
-    num_threads = std::min<int>(std::max<int>(1, num_threads), 1024);
+    num_threads = std::min<int>(std::max<int>(1, num_threads), 65536);
     threads_.reserve(num_threads);
     for (int i = 0; i < num_threads; ++i) {
       threads_.push_back(std::thread(&Impl::WorkLoop, this));

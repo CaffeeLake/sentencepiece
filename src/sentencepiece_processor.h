@@ -138,7 +138,6 @@ class ModelInterface;
 class SentencePieceText;
 class ModelProto;
 class NormalizerSpec;
-class ThreadPool;
 
 class ThreadPool {
  public:
@@ -601,6 +600,12 @@ class SentencePieceProcessor {
                                      num_samples, alpha, wor, include_best);
   }
 
+  virtual util::bytes ParallelEncodeAsSerializedProto(
+      absl::string_view input, int chunk_len, ThreadPool &thread_pool) const {
+    DEFINE_SPP_SERIALIZED_PROTO_IMPL(ParallelEncode, ImmutableSentencePieceText,
+                                     input, chunk_len, thread_pool);
+  }
+
   // TODO(taku): Remove this API and use std::vector<std::string_view>
   virtual util::bytes DecodePiecesAsSerializedProto(
       const std::vector<std::string> &pieces) const {
@@ -644,6 +649,12 @@ class SentencePieceProcessor {
     DEFINE_SPP_IMMUTABLE_PROTO_IMPL(SampleEncodeAndScore,
                                     ImmutableNBestSentencePieceText, input,
                                     num_samples, alpha, wor, include_best);
+  }
+
+  virtual ImmutableSentencePieceText ParallelEncodeAsImmutableProto(
+      absl::string_view input, int chunk_len, ThreadPool &thread_pool) const {
+    DEFINE_SPP_IMMUTABLE_PROTO_IMPL(ParallelEncode, ImmutableSentencePieceText,
+                                    input, chunk_len, thread_pool);
   }
 
   // TODO(taku): Remove this API and use std::vector<std::string_view>

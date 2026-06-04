@@ -16,6 +16,7 @@
 # limitations under the License.!
 
 from collections import defaultdict
+import glob
 import io
 import os
 import pickle
@@ -45,6 +46,13 @@ class TestSentencepieceProcessor(unittest.TestCase):
       self.assertTrue(self.sp_.LoadFromSerializedProto(f.read()))
     with open(os.path.join(HERE, 'test_ja_model.model'), 'rb') as f:
       self.assertTrue(self.jasp_.LoadFromSerializedProto(f.read()))
+
+  def tearDown(self):
+    patterns = ['m_*.model', 'm_*.vocab', 'sp_*.pickle']
+    for pattern in patterns:
+      for file_path in glob.glob(pattern):
+        if os.path.isfile(file_path):
+          os.remove(file_path)
 
   def test_load(self):
     self.assertEqual(1000, self.sp_.GetPieceSize())
@@ -374,12 +382,6 @@ class TestSentencepieceProcessor(unittest.TestCase):
     s3 = self.sp_.NBestEncodeAsImmutableProto(text, 10)
     s4 = self.sp_.DecodePiecesAsImmutableProto(['foo', 'bar'])
     s5 = self.sp_.DecodeIdsAsImmutableProto([20, 30])
-
-    print(s1)
-    print(s2)
-    print(s3)
-    print(s4)
-    print(s5)
 
     t1 = self.sp_.encode_as_immutable_proto(text)
     t2 = self.sp_.sample_encode_as_immutable_proto(text, 10, 0.2)
@@ -803,6 +805,28 @@ class TestSentencepieceProcessor(unittest.TestCase):
     e3 = [sp.calculate_entropy(s, alpha=1.0) for s in texts]
     self.assertEqual(e1, e2)
     self.assertEqual(e1, e3)
+
+  def test_parallel(self):
+    sp = spm.SentencePieceProcessor(
+        model_file=os.path.join(HERE, 'test_bpe_model.model')
+    )
+    with open(os.path.join(data_dir, 'botchan.txt'), 'r') as file:
+      texts = file.readlines()
+
+    # make long input
+    text = ''.join(texts)
+
+    results = []
+    for out_type in [int, str, 'serialized_proto', 'immutable_proto']:
+      r_sequential = sp.encode(text, out_type=out_type)
+      for chunk_len in [100, 1000, 10000]:
+        r_parallel = sp.parallel_encode(
+            text,
+            out_type=out_type,
+            chunk_len=chunk_len,
+            num_threads=8,
+        )
+        self.assertEqual(r_parallel, r_sequential)
 
   def test_pickle(self):
     tid = threading.get_native_id()

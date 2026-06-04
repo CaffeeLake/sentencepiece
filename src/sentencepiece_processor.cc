@@ -1197,7 +1197,14 @@ util::Status SentencePieceProcessor::ParallelEncodeInternal(
     absl::string_view input, size_t chunk_len, ThreadPool &thread_pool,
     std::vector<std::string> *pieces, std::vector<int> *ids,
     SentencePieceText *spt) const {
-  if (input.empty()) return util::OkStatus();
+  if (input.empty()) {
+    if (spt != nullptr) {
+      spt->Clear();
+      spt->set_text("");
+    }
+    return util::OkStatus();
+  }
+
   if (input.size() > std::numeric_limits<uint32_t>::max()) {
     return util::InvalidArgumentError(
         absl::StrCat("Input larger than ", std::numeric_limits<uint32_t>::max(),
@@ -1319,6 +1326,19 @@ util::Status SentencePieceProcessor::ParallelEncodeInternal(
         sp->set_id(piece.id());
         sp->set_begin(piece.begin() + std::get<0>(input_chunk_boundaries[i]));
         sp->set_end(piece.end() + std::get<0>(input_chunk_boundaries[i]));
+        // Reconstruct the surface string for the stitched piece.
+        // - Control characters do not have a surface.
+        // - For byte fallback pieces (IsByte is true), only the last piece in
+        //   the sequence (where begin != end) gets the surface of the original
+        //   unknown character. Intermediate byte pieces (begin == end) do not.
+        // - Normal pieces (including dummy prefix space) always get their
+        // surface.
+        if (!IsControl(piece.id())) {
+          if (!IsByte(piece.id()) || sp->begin() != sp->end()) {
+            auto tmp = input.substr(sp->begin(), sp->end() - sp->begin());
+            sp->set_surface(tmp.data(), tmp.size());
+          }
+        }
 
         // Try to find a matching token in the next chunk for this token.
         // Don't match zero width pieces.
@@ -1360,6 +1380,10 @@ util::Status SentencePieceProcessor::ParallelEncodeInternal(
                                            result, spt);
         },
         spt_chunks, input_chunk_boundaries));
+  }
+
+  if (spt != nullptr) {
+    spt->set_text(input.data(), input.size());
   }
 
   return util::OkStatus();
