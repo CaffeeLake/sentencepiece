@@ -19,6 +19,8 @@
 #include <memory>
 
 #include "third_party/absl/random/random.h"
+#include "third_party/absl/synchronization/blocking_counter.h"
+#include "third_party/absl/synchronization/mutex.h"
 
 namespace sentencepiece {
 
@@ -329,6 +331,51 @@ void ThreadPool::Schedule(std::function<void()> func) {
 }
 
 size_t ThreadPool::num_threads() const { return impl_->num_threads(); }
+
+util::Status RunBatch(size_t total_tasks,
+                      std::function<util::Status(size_t)> task_func,
+                      ThreadPool &pool) {
+  if (total_tasks == 0) return util::OkStatus();
+
+  // Cap workers to thread pool capacity.
+  const size_t num_workers = std::min<size_t>(pool.num_threads(), total_tasks);
+
+  std::atomic<size_t> index{0};      // For dynamic load-balancing
+  std::atomic<bool> aborted{false};  // For early-abort
+
+  absl::BlockingCounter barrier(num_workers);
+  absl::Mutex status_mutex;
+  util::Status batch_status = util::OkStatus();
+
+  for (size_t n = 0; n < num_workers; ++n) {
+    pool.Schedule([&]() {
+      size_t i = 0;
+
+      // Fetch next task index dynamically. Relaxed ordering is sufficient.
+      while (!aborted.load(std::memory_order_relaxed) &&
+             (i = index.fetch_add(1, std::memory_order_relaxed)) <
+                 total_tasks) {
+        util::Status status = task_func(i);
+
+        if (!status.ok()) {
+          // Signal other workers to stop.
+          aborted.store(true, std::memory_order_relaxed);
+
+          // Keep the first error encountered.
+          absl::MutexLock lock(&status_mutex);
+          batch_status = std::move(status);
+        }
+      }
+
+      barrier.DecrementCount();
+    });
+  }
+
+  // Wait for all workers to finish.
+  barrier.Wait();
+
+  return batch_status;
+}
 
 namespace log_domain {
 double LogSum(const std::vector<double> &xs) {

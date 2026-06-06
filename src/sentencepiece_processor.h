@@ -139,23 +139,51 @@ class SentencePieceText;
 class ModelProto;
 class NormalizerSpec;
 
+namespace normalizer {
+class Normalizer;
+}  // namespace normalizer
+
+// Default ThreadPool implemented using Abseil functionality.
+// If you want to use a custom implementation, please inherit from it.
+//
+// Note: This ThreadPool does not support recursive calls. Scheduling a new task
+// on the same ThreadPool from within an already scheduled task will cause a
+// severe deadlock. Please use a different ThreadPool instance instead.
 class ThreadPool {
  public:
   ThreadPool() = delete;
   ThreadPool(size_t num_threads);
-  ~ThreadPool();
+  virtual ~ThreadPool();
 
-  void Schedule(std::function<void()> func);
-  size_t num_threads() const;
+  virtual void Schedule(std::function<void()> func);
+  virtual size_t num_threads() const;
 
  private:
   class Impl;
   std::unique_ptr<Impl> impl_;
 };
 
-namespace normalizer {
-class Normalizer;
-}  // namespace normalizer
+// Currently, the C++ API does not include a dedicated batch processing API.
+// However, you can safely perform batch processing in coordination with the
+// existing ThreadPool by using the RunBatch utility below.
+//
+// Executes tasks concurrently with dynamic load-balancing. Stops early if any
+// task returns an error.
+// `total_tasks`: Number of tasks to execute (= batch size)
+// `task_func`:   Function to process a task by index.
+// `pool`:        ThreadPool for scheduling workers.
+//
+// Sample:
+//
+// ThreadPool pool(32);
+// std::vector<std::string> ins = {...};
+// std::vector<std::vector<int>> outs(ins.size());
+// auto status = sentencepiece::RunBatch(inputs.size(), [&](size_t i) {
+//   return spm.Encode(ins[i], &outs[i]);
+// }, pool);
+util::Status RunBatch(size_t total_tasks,
+                      std::function<util::Status(size_t index)> task_func,
+                      ThreadPool &pool);
 
 #ifndef SWIGGO
 namespace util {

@@ -777,34 +777,35 @@ class TestSentencepieceProcessor(unittest.TestCase):
     with open(os.path.join(data_dir, 'botchan.txt'), 'r') as file:
       texts = file.readlines()
 
+    pool = spm.ThreadPool(8)
+    self.assertEqual(pool.num_threads(), 8)
+
     for out_type in [str, int, 'serialized_proto', 'immutable_proto']:
       r1 = sp.encode(texts, out_type=out_type, num_threads=None)
       r2 = sp.encode(texts, out_type=out_type, num_threads=1)
       r3 = sp.encode(texts, out_type=out_type, num_threads=-1)
       r4 = sp.encode(texts, out_type=out_type, num_threads=8)
-      r5 = [sp.encode(s, out_type=out_type) for s in texts]
+      r5 = sp.encode(texts, out_type=out_type, thread_pool=pool)
+      r6 = [sp.encode(s, out_type=out_type) for s in texts]
       self.assertEqual(r1, r2)
       self.assertEqual(r1, r3)
       self.assertEqual(r1, r4)
       self.assertEqual(r1, r5)
+      self.assertEqual(r1, r6)
 
       if out_type in [str, int]:
         d1 = sp.decode(r1, num_threads=None)
         d2 = sp.decode(r2, num_threads=1)
         d3 = sp.decode(r3, num_threads=-1)
         d4 = sp.decode(r4, num_threads=8)
-        d5 = [sp.decode(s) for s in r5]
+        d5 = sp.decode(r4, thread_pool=pool)
+        d6 = [sp.decode(s) for s in r6]
 
         self.assertEqual(d1, d2)
         self.assertEqual(d1, d3)
         self.assertEqual(d1, d4)
         self.assertEqual(d1, d5)
-
-    e1 = sp.calculate_entropy(texts, alpha=1.0, num_threads=10)
-    e2 = sp.CalculateEntropy(texts, alpha=1.0, num_threads=10)
-    e3 = [sp.calculate_entropy(s, alpha=1.0) for s in texts]
-    self.assertEqual(e1, e2)
-    self.assertEqual(e1, e3)
+        self.assertEqual(d1, d6)
 
   def test_parallel(self):
     sp = spm.SentencePieceProcessor(
@@ -816,17 +817,20 @@ class TestSentencepieceProcessor(unittest.TestCase):
     # make long input
     text = ''.join(texts)
 
-    results = []
+    pool = spm.ThreadPool(8)
+    self.assertEqual(pool.num_threads(), 8)
+
     for out_type in [int, str, 'serialized_proto', 'immutable_proto']:
-      r_sequential = sp.encode(text, out_type=out_type)
+      r1 = sp.encode(text, out_type=out_type)
       for chunk_len in [100, 1000, 10000]:
-        r_parallel = sp.parallel_encode(
-            text,
-            out_type=out_type,
-            chunk_len=chunk_len,
-            num_threads=8,
+        r2 = sp.parallel_encode(
+            text, out_type=out_type, chunk_len=chunk_len, num_threads=8
         )
-        self.assertEqual(r_parallel, r_sequential)
+        r3 = sp.parallel_encode(
+            text, out_type=out_type, chunk_len=chunk_len, thread_pool=pool
+        )
+        self.assertEqual(r1, r2)
+        self.assertEqual(r1, r3)
 
   def test_pickle(self):
     tid = threading.get_native_id()

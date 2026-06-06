@@ -19,6 +19,8 @@
 #include "filesystem.h"
 #include "testharness.h"
 #include "third_party/absl/strings/str_cat.h"
+#include "third_party/absl/time/clock.h"
+#include "third_party/absl/time/time.h"
 
 namespace sentencepiece {
 namespace {
@@ -421,6 +423,52 @@ TEST(SentencePieceTrainerTest, DataDirTest) {
 
   SetDataDir(INSTALL_DATADIR);
   EXPECT_EQ(GetDataDir(), INSTALL_DATADIR);
+}
+
+TEST(BatchRunnerTest, EmptyTasks) {
+  ThreadPool pool(4);
+  auto status = RunBatch(0, [](size_t) { return util::OkStatus(); }, pool);
+  EXPECT_TRUE(status.ok());
+}
+
+TEST(BatchRunnerTest, AllSuccess) {
+  ThreadPool pool(4);
+  const size_t total_tasks = 100;
+  std::vector<int> results(total_tasks, 0);
+
+  auto status = RunBatch(
+      total_tasks,
+      [&](size_t i) {
+        results[i] = i * 2;
+        return util::OkStatus();
+      },
+      pool);
+
+  EXPECT_TRUE(status.ok());
+  for (size_t i = 0; i < total_tasks; ++i) {
+    EXPECT_EQ(results[i], i * 2);
+  }
+}
+
+TEST(BatchRunnerTest, EarlyAbortOnError) {
+  ThreadPool pool(4);
+  const size_t total_tasks = 100;
+  std::atomic<int> execution_count{0};
+
+  auto status = RunBatch(
+      total_tasks,
+      [&](size_t i) {
+        execution_count++;
+        if (i == 3) {
+          return util::InternalError("Intentional failure at index 50");
+        }
+        absl::SleepFor(absl::Milliseconds(1));
+        return util::OkStatus();
+      },
+      pool);
+
+  EXPECT_FALSE(status.ok());
+  EXPECT_LT(execution_count.load(), total_tasks);
 }
 
 }  // namespace sentencepiece
