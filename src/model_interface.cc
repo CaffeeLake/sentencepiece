@@ -70,6 +70,11 @@ void ModelInterface::InitializePieces() {
   int reserved_id_map_size = 0;
   for (int i = 0; i < model_proto_->pieces_size(); ++i) {
     const auto &sp = model_proto_->pieces(i);
+    static constexpr size_t kMaxPieceSize = 8192;
+    if (sp.piece().size() >= kMaxPieceSize) {
+      status_ = util::InternalError("piece size must be less than 8k.");
+      return;
+    }
     const bool is_normal_piece =
         (sp.type() == ModelProto::SentencePiece::NORMAL ||
          sp.type() == ModelProto::SentencePiece::USER_DEFINED ||
