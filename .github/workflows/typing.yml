@@ -1,0 +1,54 @@
+name: Python type stubs
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  type-check:
+    runs-on: ubuntu-latest
+    name: Check stubs and type-check public API
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.x"
+
+      - name: Build sentencepiece C++ library
+        run: |
+          cmake -B build \
+            -DSPM_ENABLE_SHARED=OFF \
+            -DSPM_DISABLE_EMBEDDED_DATA=ON \
+            -DCMAKE_INSTALL_PREFIX=build/root \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DCMAKE_CXX_FLAGS="-fPIC -fvisibility=default -ffunction-sections -fdata-sections"
+          cmake --build build --config Release --target install --parallel
+
+      - name: Build and install the Python package
+        working-directory: python
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install --no-build-isolation .
+
+      - name: Install type checkers
+        run: pip install pyright mypy
+
+      - name: Verify stubs are in sync with the runtime API
+        run: python python/tools/gen_stubs.py --check python/src/sentencepiece/__init__.pyi
+
+      - name: Run stub generator scenario tests
+        run: python python/tools/gen_stubs_scenarios.py
+
+      - name: pyright (type-check public API smoke test)
+        run: pyright python/test/typing_smoke.py
+
+      - name: mypy (type-check public API smoke test)
+        run: mypy python/test/typing_smoke.py
