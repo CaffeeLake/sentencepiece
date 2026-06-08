@@ -16,6 +16,7 @@
 # limitations under the License.!
 
 from collections import defaultdict
+import glob
 import io
 import os
 import pickle
@@ -45,6 +46,13 @@ class TestSentencepieceProcessor(unittest.TestCase):
       self.assertTrue(self.sp_.LoadFromSerializedProto(f.read()))
     with open(os.path.join(HERE, 'test_ja_model.model'), 'rb') as f:
       self.assertTrue(self.jasp_.LoadFromSerializedProto(f.read()))
+
+  def tearDown(self):
+    patterns = ['m_*.model', 'm_*.vocab', 'sp_*.pickle']
+    for pattern in patterns:
+      for file_path in glob.glob(pattern):
+        if os.path.isfile(file_path):
+          os.remove(file_path)
 
   def test_load(self):
     self.assertEqual(1000, self.sp_.GetPieceSize())
@@ -374,12 +382,6 @@ class TestSentencepieceProcessor(unittest.TestCase):
     s3 = self.sp_.NBestEncodeAsImmutableProto(text, 10)
     s4 = self.sp_.DecodePiecesAsImmutableProto(['foo', 'bar'])
     s5 = self.sp_.DecodeIdsAsImmutableProto([20, 30])
-
-    print(s1)
-    print(s2)
-    print(s3)
-    print(s4)
-    print(s5)
 
     t1 = self.sp_.encode_as_immutable_proto(text)
     t2 = self.sp_.sample_encode_as_immutable_proto(text, 10, 0.2)
@@ -775,34 +777,60 @@ class TestSentencepieceProcessor(unittest.TestCase):
     with open(os.path.join(data_dir, 'botchan.txt'), 'r') as file:
       texts = file.readlines()
 
+    pool = spm.ThreadPool(8)
+    self.assertEqual(pool.num_threads(), 8)
+
     for out_type in [str, int, 'serialized_proto', 'immutable_proto']:
       r1 = sp.encode(texts, out_type=out_type, num_threads=None)
       r2 = sp.encode(texts, out_type=out_type, num_threads=1)
       r3 = sp.encode(texts, out_type=out_type, num_threads=-1)
       r4 = sp.encode(texts, out_type=out_type, num_threads=8)
-      r5 = [sp.encode(s, out_type=out_type) for s in texts]
+      r5 = sp.encode(texts, out_type=out_type, thread_pool=pool)
+      r6 = [sp.encode(s, out_type=out_type) for s in texts]
       self.assertEqual(r1, r2)
       self.assertEqual(r1, r3)
       self.assertEqual(r1, r4)
       self.assertEqual(r1, r5)
+      self.assertEqual(r1, r6)
 
       if out_type in [str, int]:
         d1 = sp.decode(r1, num_threads=None)
         d2 = sp.decode(r2, num_threads=1)
         d3 = sp.decode(r3, num_threads=-1)
         d4 = sp.decode(r4, num_threads=8)
-        d5 = [sp.decode(s) for s in r5]
+        d5 = sp.decode(r4, thread_pool=pool)
+        d6 = [sp.decode(s) for s in r6]
 
         self.assertEqual(d1, d2)
         self.assertEqual(d1, d3)
         self.assertEqual(d1, d4)
         self.assertEqual(d1, d5)
+        self.assertEqual(d1, d6)
 
-    e1 = sp.calculate_entropy(texts, alpha=1.0, num_threads=10)
-    e2 = sp.CalculateEntropy(texts, alpha=1.0, num_threads=10)
-    e3 = [sp.calculate_entropy(s, alpha=1.0) for s in texts]
-    self.assertEqual(e1, e2)
-    self.assertEqual(e1, e3)
+  def test_parallel(self):
+    sp = spm.SentencePieceProcessor(
+        model_file=os.path.join(HERE, 'test_bpe_model.model')
+    )
+    with open(os.path.join(data_dir, 'botchan.txt'), 'r') as file:
+      texts = file.readlines()
+
+    # make long input
+    text = ''.join(texts)
+
+    pool = spm.ThreadPool(8)
+    self.assertEqual(pool.num_threads(), 8)
+
+    for out_type in [int, str, 'serialized_proto', 'immutable_proto']:
+      r1 = sp.encode(text, out_type=out_type)
+      for chunk_len in [100, 1000, 10000]:
+        r2 = sp.parallel_encode(
+            text, out_type=out_type, chunk_len=chunk_len, num_threads=8
+        )
+        r3 = sp.parallel_encode(
+            text, out_type=out_type, chunk_len=chunk_len, thread_pool=pool
+        )
+        self.assertEqual(r1, r2)
+        self.assertEqual(r1, r3)
 
   def test_pickle(self):
     tid = threading.get_native_id()

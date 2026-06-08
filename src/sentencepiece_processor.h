@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -75,6 +76,7 @@ class Status {
   struct Rep;
   std::unique_ptr<Rep> rep_;
 };
+
 }  // namespace util
 
 // SentencePieceProcessor:
@@ -140,6 +142,48 @@ class NormalizerSpec;
 namespace normalizer {
 class Normalizer;
 }  // namespace normalizer
+
+// Default ThreadPool implemented using Abseil functionality.
+// If you want to use a custom implementation, please inherit from it.
+//
+// Note: This ThreadPool does not support recursive calls. Scheduling a new task
+// on the same ThreadPool from within an already scheduled task will cause a
+// severe deadlock. Please use a different ThreadPool instance instead.
+class ThreadPool {
+ public:
+  ThreadPool() = delete;
+  ThreadPool(size_t num_threads);
+  virtual ~ThreadPool();
+
+  virtual void Schedule(std::function<void()> func);
+  virtual size_t num_threads() const;
+
+ private:
+  class Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
+// Currently, the C++ API does not include a dedicated batch processing API.
+// However, you can safely perform batch processing in coordination with the
+// existing ThreadPool by using the RunBatch utility below.
+//
+// Executes tasks concurrently with dynamic load-balancing. Stops early if any
+// task returns an error.
+// `total_tasks`: Number of tasks to execute (= batch size)
+// `task_func`:   Function to process a task by index.
+// `pool`:        ThreadPool for scheduling workers.
+//
+// Sample:
+//
+// ThreadPool pool(32);
+// std::vector<std::string> ins = {...};
+// std::vector<std::vector<int>> outs(ins.size());
+// auto status = sentencepiece::RunBatch(inputs.size(), [&](size_t i) {
+//   return spm.Encode(ins[i], &outs[i]);
+// }, pool);
+util::Status RunBatch(size_t total_tasks,
+                      std::function<util::Status(size_t index)> task_func,
+                      ThreadPool &pool);
 
 #ifndef SWIGGO
 namespace util {
@@ -421,6 +465,26 @@ class SentencePieceProcessor {
 
   virtual util::Status Decode(const std::vector<int> &ids,
                               SentencePieceText *spt) const;
+
+  //////////////////////////////////////////////////////////////
+  // API methods for encoding sequences in parallel.
+  // This is particularly useful for long inputs.
+
+  // chunk_len controls how long each chunk to be tokenized in parallel is.
+  // For best results, set this to ~10000.
+
+  // WARNING: ParallelEncode with SentencePieceText * inputs currently does not
+  // copy the UNK surface form correctly. Use at your own risk!
+  virtual util::Status ParallelEncode(absl::string_view input, int chunk_len,
+                                      ThreadPool &thread_pool,
+                                      std::vector<std::string> *pieces) const;
+  virtual util::Status ParallelEncode(absl::string_view input, int chunk_len,
+                                      ThreadPool &thread_pool,
+                                      std::vector<int> *ids) const;
+  virtual util::Status ParallelEncode(absl::string_view input, int chunk_len,
+                                      ThreadPool &thread_pool,
+                                      SentencePieceText *spt) const;
+
 #ifdef SWIG
 #define SPP_SWIG_CHECK_AND_THROW \
   if (!status.ok()) throw status;
@@ -502,6 +566,19 @@ class SentencePieceProcessor {
                                 alpha, wor, include_best);
   }
 
+  virtual std::vector<std::string> ParallelEncodeAsPieces(
+      absl::string_view input, int chunk_len, ThreadPool &therad_pool) const {
+    DEFINE_SPP_DIRECT_FUNC_IMPL(ParallelEncode, std::vector<std::string>, input,
+                                chunk_len, therad_pool);
+  }
+
+  virtual std::vector<int> ParallelEncodeAsIds(absl::string_view input,
+                                               int chunk_len,
+                                               ThreadPool &therad_pool) const {
+    DEFINE_SPP_DIRECT_FUNC_IMPL(ParallelEncode, std::vector<int>, input,
+                                chunk_len, therad_pool);
+  }
+
   // DEPRECATED: Remove this API and use std::vector<std::string_view>
   virtual std::string DecodePieces(
       const std::vector<std::string> &pieces) const {
@@ -551,6 +628,12 @@ class SentencePieceProcessor {
                                      num_samples, alpha, wor, include_best);
   }
 
+  virtual util::bytes ParallelEncodeAsSerializedProto(
+      absl::string_view input, int chunk_len, ThreadPool &thread_pool) const {
+    DEFINE_SPP_SERIALIZED_PROTO_IMPL(ParallelEncode, ImmutableSentencePieceText,
+                                     input, chunk_len, thread_pool);
+  }
+
   // TODO(taku): Remove this API and use std::vector<std::string_view>
   virtual util::bytes DecodePiecesAsSerializedProto(
       const std::vector<std::string> &pieces) const {
@@ -594,6 +677,12 @@ class SentencePieceProcessor {
     DEFINE_SPP_IMMUTABLE_PROTO_IMPL(SampleEncodeAndScore,
                                     ImmutableNBestSentencePieceText, input,
                                     num_samples, alpha, wor, include_best);
+  }
+
+  virtual ImmutableSentencePieceText ParallelEncodeAsImmutableProto(
+      absl::string_view input, int chunk_len, ThreadPool &thread_pool) const {
+    DEFINE_SPP_IMMUTABLE_PROTO_IMPL(ParallelEncode, ImmutableSentencePieceText,
+                                    input, chunk_len, thread_pool);
   }
 
   // TODO(taku): Remove this API and use std::vector<std::string_view>
@@ -717,6 +806,12 @@ class SentencePieceProcessor {
       const std::vector<size_t> &norm_to_orig,
       const std::vector<std::pair<absl::string_view, int>> &result,
       SentencePieceText *spt, bool skip_surface = false) const;
+
+  util::Status ParallelEncodeInternal(absl::string_view input, size_t chunk_len,
+                                      ThreadPool &thread_pool,
+                                      std::vector<std::string> *pieces,
+                                      std::vector<int> *ids,
+                                      SentencePieceText *spt) const;
 
   std::unique_ptr<ModelInterface> model_;
   std::unique_ptr<normalizer::Normalizer> normalizer_;

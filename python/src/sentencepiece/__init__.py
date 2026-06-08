@@ -58,6 +58,19 @@ class _SwigNonDynamicMeta(type):
     __setattr__ = _swig_setattr_nondynamic_class_variable(type.__setattr__)
 
 
+class ThreadPool(object):
+    thisown = property(lambda x: x.this.own(), lambda x, v: x.this.own(v), doc="The membership flag")
+    __repr__ = _swig_repr
+
+    def __init__(self, num_threads):
+        _sentencepiece.ThreadPool_swiginit(self, _sentencepiece.new_ThreadPool(num_threads))
+    __swig_destroy__ = _sentencepiece.delete_ThreadPool
+
+    def num_threads(self):
+        return _sentencepiece.ThreadPool_num_threads(self)
+
+# Register ThreadPool in _sentencepiece:
+_sentencepiece.ThreadPool_swigregister(ThreadPool)
 class ImmutableSentencePieceText_ImmutableSentencePiece(object):
     thisown = property(lambda x: x.this.own(), lambda x, v: x.this.own(v), doc="The membership flag")
     __repr__ = _swig_repr
@@ -273,6 +286,12 @@ class SentencePieceProcessor(object):
     def CalculateEntropy(self, *args):
         return _sentencepiece.SentencePieceProcessor_CalculateEntropy(self, *args)
 
+    def ParallelEncodeAsSerializedProto(self, input, chunk_len, thread_pool):
+        return _sentencepiece.SentencePieceProcessor_ParallelEncodeAsSerializedProto(self, input, chunk_len, thread_pool)
+
+    def ParallelEncodeAsImmutableProto(self, input, chunk_len, thread_pool):
+        return _sentencepiece.SentencePieceProcessor_ParallelEncodeAsImmutableProto(self, input, chunk_len, thread_pool)
+
     def GetPieceSize(self):
         return _sentencepiece.SentencePieceProcessor_GetPieceSize(self)
 
@@ -327,17 +346,17 @@ class SentencePieceProcessor(object):
     def _EncodeAsImmutableProto(self, text, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece):
         return _sentencepiece.SentencePieceProcessor__EncodeAsImmutableProto(self, text, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece)
 
-    def _EncodeAsIdsBatch(self, ins, num_threads, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece):
-        return _sentencepiece.SentencePieceProcessor__EncodeAsIdsBatch(self, ins, num_threads, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece)
+    def _EncodeAsIdsBatch(self, ins, num_threads, thread_pool, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece):
+        return _sentencepiece.SentencePieceProcessor__EncodeAsIdsBatch(self, ins, num_threads, thread_pool, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece)
 
-    def _EncodeAsPiecesBatch(self, ins, num_threads, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece):
-        return _sentencepiece.SentencePieceProcessor__EncodeAsPiecesBatch(self, ins, num_threads, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece)
+    def _EncodeAsPiecesBatch(self, ins, num_threads, thread_pool, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece):
+        return _sentencepiece.SentencePieceProcessor__EncodeAsPiecesBatch(self, ins, num_threads, thread_pool, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece)
 
-    def _EncodeAsSerializedProtoBatch(self, ins, num_threads, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece):
-        return _sentencepiece.SentencePieceProcessor__EncodeAsSerializedProtoBatch(self, ins, num_threads, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece)
+    def _EncodeAsSerializedProtoBatch(self, ins, num_threads, thread_pool, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece):
+        return _sentencepiece.SentencePieceProcessor__EncodeAsSerializedProtoBatch(self, ins, num_threads, thread_pool, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece)
 
-    def _EncodeAsImmutableProtoBatch(self, ins, num_threads, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece):
-        return _sentencepiece.SentencePieceProcessor__EncodeAsImmutableProtoBatch(self, ins, num_threads, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece)
+    def _EncodeAsImmutableProtoBatch(self, ins, num_threads, thread_pool, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece):
+        return _sentencepiece.SentencePieceProcessor__EncodeAsImmutableProtoBatch(self, ins, num_threads, thread_pool, enable_sampling, nbest_size, alpha, add_bos, add_eos, reverse, emit_unk_piece)
 
     def _DecodeIds(self, ids):
         return _sentencepiece.SentencePieceProcessor__DecodeIds(self, ids)
@@ -360,26 +379,26 @@ class SentencePieceProcessor(object):
     def _DecodePiecesAsImmutableProto(self, pieces):
         return _sentencepiece.SentencePieceProcessor__DecodePiecesAsImmutableProto(self, pieces)
 
-    def _DecodeIdsBatch(self, ins, num_threads):
-        return _sentencepiece.SentencePieceProcessor__DecodeIdsBatch(self, ins, num_threads)
+    def _DecodeIdsBatch(self, ins, num_threads, thread_pool):
+        return _sentencepiece.SentencePieceProcessor__DecodeIdsBatch(self, ins, num_threads, thread_pool)
 
-    def _DecodeIdsAsBytesBatch(self, ins, num_threads):
-        return _sentencepiece.SentencePieceProcessor__DecodeIdsAsBytesBatch(self, ins, num_threads)
+    def _DecodeIdsAsBytesBatch(self, ins, num_threads, thread_pool):
+        return _sentencepiece.SentencePieceProcessor__DecodeIdsAsBytesBatch(self, ins, num_threads, thread_pool)
 
-    def _DecodeIdsAsSerializedProtoBatch(self, ins, num_threads):
-        return _sentencepiece.SentencePieceProcessor__DecodeIdsAsSerializedProtoBatch(self, ins, num_threads)
+    def _DecodeIdsAsSerializedProtoBatch(self, ins, num_threads, thread_pool):
+        return _sentencepiece.SentencePieceProcessor__DecodeIdsAsSerializedProtoBatch(self, ins, num_threads, thread_pool)
 
-    def _DecodeIdsAsImmutableProtoBatch(self, ins, num_threads):
-        return _sentencepiece.SentencePieceProcessor__DecodeIdsAsImmutableProtoBatch(self, ins, num_threads)
+    def _DecodeIdsAsImmutableProtoBatch(self, ins, num_threads, thread_pool):
+        return _sentencepiece.SentencePieceProcessor__DecodeIdsAsImmutableProtoBatch(self, ins, num_threads, thread_pool)
 
-    def _DecodePiecesBatch(self, ins, num_threads):
-        return _sentencepiece.SentencePieceProcessor__DecodePiecesBatch(self, ins, num_threads)
+    def _DecodePiecesBatch(self, ins, num_threads, thread_pool):
+        return _sentencepiece.SentencePieceProcessor__DecodePiecesBatch(self, ins, num_threads, thread_pool)
 
-    def _DecodePiecesAsSerializedProtoBatch(self, ins, num_threads):
-        return _sentencepiece.SentencePieceProcessor__DecodePiecesAsSerializedProtoBatch(self, ins, num_threads)
+    def _DecodePiecesAsSerializedProtoBatch(self, ins, num_threads, thread_pool):
+        return _sentencepiece.SentencePieceProcessor__DecodePiecesAsSerializedProtoBatch(self, ins, num_threads, thread_pool)
 
-    def _DecodePiecesAsImmutableProtoBatch(self, ins, num_threads):
-        return _sentencepiece.SentencePieceProcessor__DecodePiecesAsImmutableProtoBatch(self, ins, num_threads)
+    def _DecodePiecesAsImmutableProtoBatch(self, ins, num_threads, thread_pool):
+        return _sentencepiece.SentencePieceProcessor__DecodePiecesAsImmutableProtoBatch(self, ins, num_threads, thread_pool)
 
     def _NBestEncodeAsIds(self, text, nbest_size, add_bos, add_eos, reverse, emit_unk_piece):
         return _sentencepiece.SentencePieceProcessor__NBestEncodeAsIds(self, text, nbest_size, add_bos, add_eos, reverse, emit_unk_piece)
@@ -405,6 +424,18 @@ class SentencePieceProcessor(object):
     def _SampleEncodeAndScoreAsImmutableProto(self, text, num_samples, alpha, wor, include_best, add_bos, add_eos, reverse, emit_unk_piece):
         return _sentencepiece.SentencePieceProcessor__SampleEncodeAndScoreAsImmutableProto(self, text, num_samples, alpha, wor, include_best, add_bos, add_eos, reverse, emit_unk_piece)
 
+    def _ParallelEncodeAsIds(self, text, chunk_len, num_threads, thread_pool, add_bos, add_eos, reverse, emit_unk_piece):
+        return _sentencepiece.SentencePieceProcessor__ParallelEncodeAsIds(self, text, chunk_len, num_threads, thread_pool, add_bos, add_eos, reverse, emit_unk_piece)
+
+    def _ParallelEncodeAsPieces(self, text, chunk_len, num_threads, thread_pool, add_bos, add_eos, reverse, emit_unk_piece):
+        return _sentencepiece.SentencePieceProcessor__ParallelEncodeAsPieces(self, text, chunk_len, num_threads, thread_pool, add_bos, add_eos, reverse, emit_unk_piece)
+
+    def _ParallelEncodeAsSerializedProto(self, text, chunk_len, num_threads, thread_pool, add_bos, add_eos, reverse, emit_unk_piece):
+        return _sentencepiece.SentencePieceProcessor__ParallelEncodeAsSerializedProto(self, text, chunk_len, num_threads, thread_pool, add_bos, add_eos, reverse, emit_unk_piece)
+
+    def _ParallelEncodeAsImmutableProto(self, text, chunk_len, num_threads, thread_pool, add_bos, add_eos, reverse, emit_unk_piece):
+        return _sentencepiece.SentencePieceProcessor__ParallelEncodeAsImmutableProto(self, text, chunk_len, num_threads, thread_pool, add_bos, add_eos, reverse, emit_unk_piece)
+
     def _Normalize(self, text):
         return _sentencepiece.SentencePieceProcessor__Normalize(self, text)
 
@@ -413,9 +444,6 @@ class SentencePieceProcessor(object):
 
     def _CalculateEntropy(self, text, alpha):
         return _sentencepiece.SentencePieceProcessor__CalculateEntropy(self, text, alpha)
-
-    def _CalculateEntropyBatch(self, ins, alpha, num_threads):
-        return _sentencepiece.SentencePieceProcessor__CalculateEntropyBatch(self, ins, alpha, num_threads)
 
     def _OverrideNormalizerSpec(self, args):
         return _sentencepiece.SentencePieceProcessor__OverrideNormalizerSpec(self, args)
@@ -478,7 +506,8 @@ class SentencePieceProcessor(object):
                enable_sampling=None,
                nbest_size=None,
                alpha=None,
-               num_threads=None):
+               num_threads=None,
+               thread_pool=None):
       """Encode text input to segmented ids or tokens.
 
         Args:
@@ -498,6 +527,7 @@ class SentencePieceProcessor(object):
         alpha: Soothing parameter for unigram sampling, and merge probability for
                BPE-dropout (probablity 'p' in BPE-dropout paper).
         num_threads: the number of threads used in the batch processing (Default = -1).
+        thread_pool: shared thread pool object (Default = None)
       """
 
       if out_type is None:
@@ -533,16 +563,16 @@ class SentencePieceProcessor(object):
 
       if type(input) is list:
         if out_type is int:
-          return self._EncodeAsIdsBatch(input, num_threads, enable_sampling, nbest_size,
+          return self._EncodeAsIdsBatch(input, num_threads, thread_pool, enable_sampling, nbest_size,
                                         alpha, add_bos, add_eos, reverse, emit_unk_piece)
         if out_type is str:
-          return self._EncodeAsPiecesBatch(input, num_threads, enable_sampling, nbest_size,
+          return self._EncodeAsPiecesBatch(input, num_threads, thread_pool, enable_sampling, nbest_size,
                                            alpha, add_bos, add_eos, reverse, emit_unk_piece)
         if out_type == 'serialized_proto' or out_type == 'proto':
-          return self._EncodeAsSerializedProtoBatch(input, num_threads, enable_sampling, nbest_size,
+          return self._EncodeAsSerializedProtoBatch(input, num_threads, thread_pool, enable_sampling, nbest_size,
                                                     alpha, add_bos, add_eos, reverse, emit_unk_piece)
         if out_type == 'immutable_proto':
-          return self._EncodeAsImmutableProtoBatch(input, num_threads, enable_sampling, nbest_size,
+          return self._EncodeAsImmutableProtoBatch(input, num_threads, thread_pool, enable_sampling, nbest_size,
                                                    alpha, add_bos, add_eos, reverse, emit_unk_piece)
 
       if out_type is int:
@@ -772,13 +802,102 @@ class SentencePieceProcessor(object):
       return self.SampleEncodeAndScore(input=input, num_samples=num_samples, alpha=alpha,
                                        out_type='immutable_proto', **kwargs)
 
+    def ParallelEncode(self,
+                       input,
+                       out_type=None,
+                       add_bos=None,
+                       add_eos=None,
+                       reverse=None,
+                       emit_unk_piece=None,
+                       chunk_len=None,
+                       num_threads=None,
+                       thread_pool=None):
+      """ParalellEncode text input to segmented ids or tokens.
 
-    def Decode(self, input, out_type=str, num_threads=None):
+        Args:
+        input: input string. accepsts list of string.
+        out_type: output type. int or str or 'serialized_proto' or 'immutable_proto'
+        add_bos: Add <s> to the result (Default = false)
+        add_eos: Add </s> to the result (Default = false) <s>/</s> is added after reversing (if enabled).
+        reverse: Reverses the tokenized sequence (Default = false)
+        emit_unk_piece: Emits the unk literal string (Default = false)
+        chunk_len: chunk size per thread (Default = None)
+        num_threads: the number of threads used in the batch processing (Default = -1).
+        thread_pool: shared thread pool object (Default = None)
+      """
+
+      if out_type is None:
+        out_type = self._out_type
+      if add_bos is None:
+        add_bos = self._add_bos
+      if add_eos is None:
+        add_eos = self._add_eos
+      if reverse is None:
+        reverse = self._reverse
+      if emit_unk_piece is None:
+        emit_unk_piece = self._emit_unk_piece
+      if num_threads is None:
+        num_threads = self._num_threads
+
+      if num_threads is None or type(num_threads) is not int:
+        raise RuntimeError('num_threads must be int')
+
+      if chunk_len is None or type(chunk_len) is not int or chunk_len <= 0:
+        raise RuntimeError('chunk_len must be positive.')
+
+      def _encode(text):
+        if out_type is int:
+          return self._ParallelEncodeAsIds(text, chunk_len, num_threads, thread_pool,
+                                           add_bos, add_eos, reverse, emit_unk_piece)
+
+        if out_type is str:
+          return self._ParallelEncodeAsPieces(text, chunk_len, num_threads, thread_pool,
+                                              add_bos, add_eos, reverse, emit_unk_piece)
+
+        if out_type == 'serialized_proto' or out_type == 'proto':
+          return self._ParallelEncodeAsSerializedProto(text, chunk_len, num_threads, thread_pool,
+                                                       add_bos, add_eos, reverse, emit_unk_piece)
+
+        if out_type == 'immutable_proto':
+          return self._ParallelEncodeAsImmutableProto(text, chunk_len, num_threads, thread_pool,
+                                                      add_bos, add_eos, reverse, emit_unk_piece)
+
+        raise RuntimeError('unknown output type')
+
+
+      if type(input) is list:
+        return [_encode(n) for n in input]
+
+      return _encode(input)
+
+
+    def ParallelEncodeAsPieces(self, input, **kwargs):
+      return self.ParallelEncode(input=input, out_type=str, **kwargs)
+
+
+    def ParallelEncodeAsIds(self, input, **kwargs):
+      return self.ParallelEncode(input=input, out_type=int, **kwargs)
+
+
+    def ParallelEncodeAsSerializedProto(self, input, **kwargs):
+      return self.ParallelEncode(input=input, out_type='serialized_proto', **kwargs)
+
+
+    def ParallelEncodeAsImmutableProto(self, input, **kwargs):
+      return self.ParallelEncode(input=input, out_type='immutable_proto', **kwargs)
+
+
+    def Decode(self,
+               input,
+               out_type=str,
+               num_threads=None,
+               thread_pool=None):
       """Decode processed id or token sequences.
 
       Args:
         out_type: output type. str, bytes or 'serialized_proto' or 'immutable_proto' (Default = str)
-        num_threads: the number of threads used in the batch processing (Default = -1).
+        num_threads: the number of threads used in the batch processing (Default = -1)
+        thread_pool: shared thread pool object (Default = None)
       """
 
       if num_threads is None:
@@ -804,9 +923,9 @@ class SentencePieceProcessor(object):
 
           if type(input[0]) is list:
             if len(input[0]) == 0 or type(input[0][0]) is int:
-             return self._DecodeIdsBatch(input, num_threads)
+              return self._DecodeIdsBatch(input, num_threads, thread_pool)
             if type(input[0][0]) is str:
-             return self._DecodePiecesBatch(input, num_threads)
+              return self._DecodePiecesBatch(input, num_threads, thread_pool)
 
       if out_type is bytes:
         if type(input) is int:
@@ -822,9 +941,9 @@ class SentencePieceProcessor(object):
 
           if type(input[0]) is list:
             if len(input[0]) == 0 or type(input[0][0]) is int:
-             return self._DecodeIdsAsBytesBatch(input, num_threads)
+             return self._DecodeIdsAsBytesBatch(input, num_threads, thread_pool)
             if type(input[0][0]) is str:
-             return self._DecodePiecesBatch(input, num_threads)
+             return self._DecodePiecesBatch(input, num_threads, thread_pool)
 
       if out_type == 'serialized_proto':
         if type(input) is int:
@@ -840,9 +959,9 @@ class SentencePieceProcessor(object):
 
           if type(input[0]) is list:
             if len(input[0]) == 0 or type(input[0][0]) is int:
-             return self._DecodeIdsAsSerializedProtoBatch(input, num_threads)
+             return self._DecodeIdsAsSerializedProtoBatch(input, num_threads, thread_pool)
             if type(input[0][0]) is str:
-             return self._DecodePiecesAsSerializedProtoBatch(input, num_threads)
+             return self._DecodePiecesAsSerializedProtoBatch(input, num_threads, thread_pool)
 
 
       if out_type == 'immutable_proto':
@@ -859,9 +978,9 @@ class SentencePieceProcessor(object):
 
           if type(input[0]) is list:
             if len(input[0]) == 0 or type(input[0][0]) is int:
-             return self._DecodeIdsAsImmutableProtoBatch(input, num_threads)
+             return self._DecodeIdsAsImmutableProtoBatch(input, num_threads, thread_pool)
             if type(input[0][0]) is str:
-             return self._DecodePiecesAsImmutableProtoBatch(input, num_threads)
+             return self._DecodePiecesAsImmutableProtoBatch(input, num_threads, thread_pool)
 
 
       raise RuntimeError('unknown output or input type')
@@ -892,14 +1011,10 @@ class SentencePieceProcessor(object):
       return self.Decode(input=input, out_type=out_type, **kwargs)
 
 
-    def CalculateEntropy(self, input, alpha, num_threads=None):
+    def CalculateEntropy(self, input, alpha):
       """Calculate sentence entropy"""
       if type(input) is list:
-        if num_threads is None:
-          num_threads = self._num_threads
-        if num_threads is None or type(num_threads) is not int:
-          raise RuntimeError('num_threads must be int')
-        return self._CalculateEntropyBatch(input, alpha, num_threads)
+        return [self._CalculateEntropy(x, alpha) for x in input]
 
       return self._CalculateEntropy(input, alpha)
 

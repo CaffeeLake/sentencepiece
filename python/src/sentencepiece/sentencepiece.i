@@ -2,330 +2,7 @@
 %include exception.i
 
 %{
-
-#include <atomic>
-#include <iostream>
-#include <algorithm>
-#include <functional>
-#include <limits>
-#include <cmath>
-#include <thread>
-#include <vector>
-#include <sentencepiece_processor.h>
-#include <sentencepiece_trainer.h>
-
-namespace {
-PyObject* kUnicodeInput = reinterpret_cast<PyObject* >(0x1);
-PyObject* kByteInput = reinterpret_cast<PyObject* >(0x2);
-
-using BytesArray = std::vector<sentencepiece::util::bytes>;
-
-inline void ReleaseResultObject(PyObject *obj) {
-  if (obj != nullptr && obj != kUnicodeInput && obj != kByteInput) {
-    Py_XDECREF(obj);
-  }
-}
-
-class PyInputString {
- public:
-  explicit PyInputString(PyObject* obj) {
-    if (PyUnicode_Check(obj)) {
-      str_ = const_cast<char *>(PyUnicode_AsUTF8AndSize(obj, &size_));
-      input_type_ = kUnicodeInput;
-    } else if (PyBytes_Check(obj)) {
-      PyBytes_AsStringAndSize(obj, &str_, &size_);
-      input_type_ = kByteInput;
-    } else {
-      str_ = nullptr;
-    }
-  }
-  absl::string_view str() const { return absl::string_view(data(), size()); }
-  const char* data() const { return str_; }
-  Py_ssize_t size() const { return size_; }
-  bool IsAvalable() const { return str_ != nullptr; }
-  PyObject *input_type() const { return input_type_; }
-
-  static bool IsUnicode(PyObject *resultobj) {
-    return (resultobj == nullptr || resultobj == kUnicodeInput);
-  }
-
- private:
-  PyObject* input_type_ = nullptr;
-  char* str_ = nullptr;
-  Py_ssize_t size_ = 0;
-};
-
-PyObject* MakePyOutputString(const std::string& output,
-                             PyObject *resultobj) {
-  if (PyInputString::IsUnicode(resultobj)) {
-    return PyUnicode_FromStringAndSize(output.data(), output.size());
-  }
-  return PyBytes_FromStringAndSize(output.data(), output.size());
-}
-
-PyObject* MakePyOutputBytes(const sentencepiece::util::bytes& output) {
-  return PyBytes_FromStringAndSize(output.data(), output.size());
-}
-
-int ToSwigError(sentencepiece::util::StatusCode code) {
-  switch (code) {
-    case sentencepiece::util::StatusCode::kNotFound:
-      return SWIG_IOError;
-    case sentencepiece::util::StatusCode::kOutOfRange:
-      return SWIG_IndexError;
-    case sentencepiece::util::StatusCode::kInvalidArgument:
-      return SWIG_SyntaxError;
-    default:
-      return SWIG_RuntimeError;
-  }
-  return SWIG_RuntimeError;
-}
-
-#ifndef Py_GIL_DISABLED
-// RAII class to release GIL.
-// Release GIL in contractor and acquire GIL in destractor.
-class ScopedGILRelease {
-public:
-  ScopedGILRelease() { save_ = PyEval_SaveThread(); }
-  ~ScopedGILRelease() { PyEval_RestoreThread(save_); }
-private:
-  PyThreadState *save_;
-};
-
-// RAII class to aquire GIL.
-// Acquire GIL in contractor and release GIL in destractor.
-class ScopedGILAcquire {
-public:
-  ScopedGILAcquire() { state_ = PyGILState_Ensure(); }
-  ~ScopedGILAcquire() { PyGILState_Release(state_); }
-private:
-  PyGILState_STATE state_;
-};
-#else
-class ScopedGILRelease {
-public:
-  ScopedGILRelease() {}
-  ~ScopedGILRelease() {}
-};
-
-class ScopedGILAcquire {
-public:
-  ScopedGILAcquire() {}
-  ~ScopedGILAcquire() {}
-};
-#endif  // Py_GIL_DISABLED
-
-class PySentenceIterator : public sentencepiece::SentenceIterator {
-  public:
-  PySentenceIterator(PyObject *iter) : iter_(iter) {
-    ScopedGILAcquire aquire;
-    item_ = PyIter_Next(iter_);
-    CopyValue();
-  }
-
-  ~PySentenceIterator() {
-   // Py_XDECREF(iter_);
-  }
-
-  bool done() const override {
-    return item_ == nullptr;
-  }
-
-  void Next() override {
-    ScopedGILAcquire aquire;
-    item_ = PyIter_Next(iter_);
-    CopyValue();
-  }
-
-  const std::string &value() const override {
-    return value_;
-  }
-
-  sentencepiece::util::Status status() const override {
-    return status_;
-  }
-
-  private:
-   void CopyValue() {
-     if (item_ == nullptr) return;
-     const PyInputString ustring(item_);
-     if (ustring.IsAvalable()) {
-       const char *data = ustring.data();
-       size_t size = ustring.size();
-       while (size > 0) {
-         if (data[size - 1] == '\r' || data[size - 1] == '\n')
-           --size;
-         else
-           break;
-       }
-       value_.assign(data, size);
-     } else {
-       status_ = sentencepiece::util::Status(sentencepiece::util::StatusCode::kInternal,
-                                             "Not a string.");
-     }
-     Py_XDECREF(item_);
-   }
-   PyObject *iter_ = nullptr;
-   PyObject *item_ = nullptr;
-   std::string value_;
-   sentencepiece::util::Status status_;
-};
-
-inline void RewriteIds(const sentencepiece::SentencePieceProcessor &sp,
-                       std::vector<int> *ids,
-                       bool add_bos, bool add_eos, bool reverse, bool emit_unk_piece) {
-  if (!add_bos && !add_eos && !reverse) return;
-  if (reverse) std::reverse(ids->begin(), ids->end());
-  if (add_bos) ids->insert(ids->begin(), sp.bos_id());
-  if (add_eos) ids->push_back(sp.eos_id());
-}
-
-inline void RewriteIds(const sentencepiece::SentencePieceProcessor &sp,
-                       std::vector<std::string> *pieces,
-                       bool add_bos, bool add_eos, bool reverse, bool emit_unk_piece) {
-  if (!add_bos && !add_eos && !reverse && !emit_unk_piece) return;
-  if (reverse) std::reverse(pieces->begin(), pieces->end());
-  if (add_bos) pieces->insert(pieces->begin(), sp.IdToPiece(sp.bos_id()));
-  if (add_eos) pieces->push_back(sp.IdToPiece(sp.eos_id()));
-  if (emit_unk_piece) {
-    const auto &unk = sp.IdToPiece(sp.unk_id());
-    for (auto &piece : *pieces) {
-      const int id = sp.PieceToId(piece);
-      if (id == sp.unk_id()) {
-        piece = unk;
-      }
-    }
-  }
-}
-
-inline void RewriteIds(const sentencepiece::SentencePieceProcessor &sp,
-                       sentencepiece::util::bytes *proto,
-                       bool add_bos, bool add_eos, bool reverse, bool emit_unk_piece) {
-  if (add_bos || add_eos || reverse || emit_unk_piece) {
-    throw sentencepiece::util::Status(
-        sentencepiece::util::StatusCode::kUnimplemented,
-        "add_bos, add_eos, reverse, and emit_unk_piece is not supported in proto API");
-  }
-}
-
-inline void RewriteIds(const sentencepiece::SentencePieceProcessor &sp,
-                       sentencepiece::ImmutableSentencePieceText *proto,
-                       bool add_bos, bool add_eos, bool reverse, bool emit_unk_piece) {
-  if (add_bos || add_eos || reverse || emit_unk_piece) {
-    throw sentencepiece::util::Status(
-        sentencepiece::util::StatusCode::kUnimplemented,
-        "add_bos, add_eos, reverse, and emit_unk_piece is not supported in proto API");
-  }
-}
-
-inline void CheckIds(const std::vector<int> &ids, int num_pieces) {
-  for (int id : ids) {
-    if (id < 0 || id >= num_pieces) {
-      throw sentencepiece::util::Status(
-          sentencepiece::util::StatusCode::kOutOfRange,
-          "piece id is out of range.");
-    }
-  }
-}
-
-inline void CheckIds(const std::vector<absl::string_view> &ids, int num_pieces) {}
-
-inline void CheckIdsBatch(const std::vector<std::vector<int>> &ids, int num_pieces) {
-  for (const auto &v : ids) CheckIds(v, num_pieces);
-}
-
-template <typename T>
-inline void ConvertToUnicodeSpans(T *proto) {}
-
-template <>
-inline void ConvertToUnicodeSpans(sentencepiece::ImmutableSentencePieceText *proto) {
-  proto->ConvertToUnicodeSpans();
-}
-
-template <>
-inline void ConvertToUnicodeSpans(sentencepiece::ImmutableNBestSentencePieceText *proto) {
-  proto->ConvertToUnicodeSpans();
-}
-
-class ThreadPool {
- public:
-  explicit ThreadPool(size_t request_size) :
-    request_size_(request_size) {}
-
-  virtual ~ThreadPool() {
-    for (auto &task : tasks_) {
-      task.join();
-    }
-  }
-
-  void Schedule(std::function<void()> closure) {
-    static constexpr size_t kMinThreadSize = 2;
-    if (request_size_ < kMinThreadSize) {
-      closure();
-    } else {
-      tasks_.emplace_back(closure);
-    }
-  }
-
- private:
-  size_t request_size_ = 0;
-  std::vector<std::thread> tasks_;
-};
-
-template <typename T>
-inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
-  if (*num_threads < 0) {
-    *num_threads = std::thread::hardware_concurrency();
-  }
-  *num_threads = std::max<int>(1,
-                               std::min<int>({*num_threads,
-                                     static_cast<int>(ins.size()), 256}));
-}
-
-#define DEFINE_ENCODE_BATCH_FUNC_IMPL(FuncName, InType, OutType)        \
-  std::vector<OutType> outs(ins.size());                                \
-  InitNumThreads(ins, &num_threads);                                    \
-  {                                                                     \
-    ThreadPool pool(ins.size());                                        \
-    std::atomic<size_t> index = 0;                                      \
-    for (int n = 0;  n < num_threads; ++n) {                            \
-      pool.Schedule([&]() {                                             \
-          size_t i = 0;                                                 \
-          while ((i = std::atomic_fetch_add(&index, 1)) < outs.size()) { \
-            auto out = enable_sampling ?                                \
-                       self->Sample##FuncName(ins[i],                   \
-                                              nbest_size, alpha) :      \
-                       self->FuncName(ins[i]);                          \
-            RewriteIds(*self, &out, add_bos, add_eos, reverse,          \
-                       emit_unk_piece);                                 \
-            ConvertToUnicodeSpans(&out);                                \
-            outs[i] = std::move(out);                                   \
-          }                                                             \
-        });                                                             \
-    }                                                                   \
-  }                                                                     \
-  return outs;
-
-#define DEFINE_DECODE_BATCH_FUNC_IMPL(FuncName, InType, OutType)        \
-  std::vector<OutType> outs(ins.size());                                \
-  InitNumThreads(ins, &num_threads);                                    \
-  {                                                                     \
-    std::atomic<size_t> index = 0;                                      \
-    ThreadPool pool(ins.size());                                        \
-    for (int n = 0;  n < num_threads; ++n) {                            \
-      pool.Schedule([&]() {                                             \
-          size_t i = 0;                                                 \
-          while ((i = std::atomic_fetch_add(&index, 1)) < outs.size()) { \
-            auto out = self->FuncName(ins[i]);                          \
-            ConvertToUnicodeSpans(&out);                                \
-            outs[i] = std::move(out);                                   \
-          }                                                             \
-        });                                                             \
-    }                                                                   \
-  }                                                                     \
-  return outs;
-
-}  // namespace
+#include "sentencepiece_swig.h"
 %}
 
 %exception {
@@ -358,6 +35,9 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
 %ignore sentencepiece::ImmutableNBestSentencePieceText::nbests() const;
 %ignore sentencepiece::ImmutableNBestSentencePieceText::ConvertToUnicodeSpans;
 
+%ignore sentencepiece::RunBatch;
+%ignore sentencepiece::ThreadPool::Schedule;
+
 %ignore sentencepiece::SentencePieceProcessor::Encode;
 %ignore sentencepiece::SentencePieceProcessor::SampleEncode;
 %ignore sentencepiece::SentencePieceProcessor::NBestEncode;
@@ -388,6 +68,11 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
 %ignore sentencepiece::SentencePieceProcessor::SampleEncodeAndScoreAsImmutableProto;
 %ignore sentencepiece::SentencePieceProcessor::DecodePiecesAsImmutableProto;
 %ignore sentencepiece::SentencePieceProcessor::DecodeIdsAsImmutableProto;
+
+%ignore sentencepiece::SentencePieceProcessor::ParallelEncode;
+%ignore sentencepiece::SentencePieceProcessor::ParallelEncode;
+%ignore sentencepiece::SentencePieceProcessor::ParallelEncodeAsIds;
+%ignore sentencepiece::SentencePieceProcessor::ParallelEncodeAsPieces;
 
 %ignore sentencepiece::SentencePieceProcessor::Normalize;
 %ignore sentencepiece::SentencePieceProcessor::NormalizeWithOffsets;
@@ -482,6 +167,7 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
   // EncodeAs* (Batch request)
   std::vector<std::vector<int>> _EncodeAsIdsBatch(
       const std::vector<absl::string_view> &ins, int num_threads,
+      sentencepiece::ThreadPool *thread_pool,
       bool enable_sampling, int nbest_size, float alpha,
       bool add_bos, bool add_eos, bool reverse,
       bool emit_unk_piece) const {
@@ -491,6 +177,7 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
 
   std::vector<std::vector<std::string>> _EncodeAsPiecesBatch(
       const std::vector<absl::string_view> &ins, int num_threads,
+      sentencepiece::ThreadPool *thread_pool,
       bool enable_sampling, int nbest_size, float alpha,
       bool add_bos, bool add_eos, bool reverse,
       bool emit_unk_piece) const {
@@ -500,6 +187,7 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
 
   BytesArray _EncodeAsSerializedProtoBatch(
       const std::vector<absl::string_view> &ins, int num_threads,
+      sentencepiece::ThreadPool *thread_pool,
       bool enable_sampling, int nbest_size, float alpha,
       bool add_bos, bool add_eos, bool reverse,
       bool emit_unk_piece) const {
@@ -511,6 +199,7 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
   std::vector<sentencepiece::ImmutableSentencePieceText>
       _EncodeAsImmutableProtoBatch(
       const std::vector<absl::string_view> &ins, int num_threads,
+      sentencepiece::ThreadPool *thread_pool,
       bool enable_sampling, int nbest_size, float alpha,
       bool add_bos, bool add_eos, bool reverse,
       bool emit_unk_piece) const {
@@ -566,19 +255,22 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
   /////////////////////////////////////////////////////////////////////////////
   // DecodeAs* (Batch request)
   std::vector<std::string> _DecodeIdsBatch(
-      const std::vector<std::vector<int>> &ins, int num_threads) const {
+      const std::vector<std::vector<int>> &ins, int num_threads,
+      sentencepiece::ThreadPool *thread_pool) const {
     CheckIdsBatch(ins, $self->GetPieceSize());
     DEFINE_DECODE_BATCH_FUNC_IMPL(DecodeIds, int, std::string);
   }
 
   BytesArray _DecodeIdsAsBytesBatch(
-      const std::vector<std::vector<int>> &ins, int num_threads) const {
+      const std::vector<std::vector<int>> &ins, int num_threads,
+      sentencepiece::ThreadPool *thread_pool) const {
     CheckIdsBatch(ins, $self->GetPieceSize());
     DEFINE_DECODE_BATCH_FUNC_IMPL(DecodeIds, int, std::string);
   }
 
   BytesArray _DecodeIdsAsSerializedProtoBatch(
-      const std::vector<std::vector<int>> &ins, int num_threads) const {
+      const std::vector<std::vector<int>> &ins, int num_threads,
+      sentencepiece::ThreadPool *thread_pool) const {
     CheckIdsBatch(ins, $self->GetPieceSize());
     DEFINE_DECODE_BATCH_FUNC_IMPL(DecodeIdsAsSerializedProto, int,
                                   sentencepiece::util::bytes);
@@ -586,26 +278,30 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
 
   std::vector<sentencepiece::ImmutableSentencePieceText>
       _DecodeIdsAsImmutableProtoBatch(
-          const std::vector<std::vector<int>> &ins, int num_threads) const {
+          const std::vector<std::vector<int>> &ins, int num_threads,
+          sentencepiece::ThreadPool *thread_pool) const {
     CheckIdsBatch(ins, $self->GetPieceSize());
     DEFINE_DECODE_BATCH_FUNC_IMPL(DecodeIdsAsImmutableProto, int,
                                   sentencepiece::ImmutableSentencePieceText);
   }
 
   std::vector<std::string> _DecodePiecesBatch(
-      const std::vector<std::vector<absl::string_view>> &ins, int num_threads) const {
+      const std::vector<std::vector<absl::string_view>> &ins, int num_threads,
+      sentencepiece::ThreadPool *thread_pool) const {
     DEFINE_DECODE_BATCH_FUNC_IMPL(DecodePieces, std::string, std::string);
   }
 
   BytesArray _DecodePiecesAsSerializedProtoBatch(
-      const std::vector<std::vector<absl::string_view>> &ins, int num_threads) const {
+      const std::vector<std::vector<absl::string_view>> &ins, int num_threads,
+      sentencepiece::ThreadPool *thread_pool) const {
     DEFINE_DECODE_BATCH_FUNC_IMPL(DecodePiecesAsSerializedProto, std::string,
                                   sentencepiece::util::bytes);
   }
 
   std::vector<sentencepiece::ImmutableSentencePieceText>
       _DecodePiecesAsImmutableProtoBatch(
-          const std::vector<std::vector<absl::string_view>> &ins, int num_threads) const {
+          const std::vector<std::vector<absl::string_view>> &ins, int num_threads,
+          sentencepiece::ThreadPool *thread_pool) const {
     DEFINE_DECODE_BATCH_FUNC_IMPL(DecodePiecesAsImmutableProto, std::string,
                                   sentencepiece::ImmutableSentencePieceText);
   }
@@ -657,7 +353,6 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
     proto.ConvertToUnicodeSpans();
     return proto;
   }
-
 
   /////////////////////////////////////////////////////////////////////////////
   // SampleEncodeAndScoreAs* (Single request)
@@ -715,12 +410,63 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
     return proto;
   }
 
+  /////////////////////////////////////////////////////////////////////////////
+  // ParallelEncodeAndScoreAs*
+  std::vector<int> _ParallelEncodeAsIds(absl::string_view text,
+                                        int chunk_len, int num_threads,
+                                        sentencepiece::ThreadPool *thread_pool,
+                                        bool add_bos, bool add_eos, bool reverse,
+                                        bool emit_unk_piece) const {
+    INIT_THREAD_POOL;
+    auto ids = $self->ParallelEncodeAsIds(text, chunk_len, *pool);
+    RewriteIds(*$self, &ids, add_bos, add_eos, reverse, emit_unk_piece);
+    return ids;
+  }
+
+  std::vector<std::string> _ParallelEncodeAsPieces(absl::string_view text,
+                                                   int chunk_len, int num_threads,
+                                                   sentencepiece::ThreadPool *thread_pool,
+                                                   bool add_bos, bool add_eos, bool reverse,
+                                                   bool emit_unk_piece) const {
+    INIT_THREAD_POOL;
+    auto pieces = $self->ParallelEncodeAsPieces(text, chunk_len, *pool);
+    RewriteIds(*$self, &pieces, add_bos, add_eos, reverse, emit_unk_piece);
+    return pieces;
+  }
+
+  sentencepiece::util::bytes
+      _ParallelEncodeAsSerializedProto(absl::string_view text,
+                                       int chunk_len, int num_threads,
+                                       sentencepiece::ThreadPool *thread_pool,
+                                       bool add_bos, bool add_eos, bool reverse,
+                                       bool emit_unk_piece) const {
+    RewriteIds(*$self, static_cast<sentencepiece::util::bytes *>(nullptr),
+               add_bos, add_eos, reverse, emit_unk_piece);
+    INIT_THREAD_POOL;
+    return $self->ParallelEncodeAsSerializedProto(text, chunk_len, *pool);
+  }
+
+  sentencepiece::ImmutableSentencePieceText
+      _ParallelEncodeAsImmutableProto(absl::string_view text,
+                                      int chunk_len, int num_threads,
+                                      sentencepiece::ThreadPool *thread_pool,
+                                      bool add_bos, bool add_eos, bool reverse,
+                                      bool emit_unk_piece) const {
+    RewriteIds(*$self, static_cast<sentencepiece::util::bytes *>(nullptr),
+               add_bos, add_eos, reverse, emit_unk_piece);
+    INIT_THREAD_POOL;
+    auto proto = $self->ParallelEncodeAsImmutableProto(text, chunk_len, *pool);
+    proto.ConvertToUnicodeSpans();
+    return proto;
+  }
+
   // Normalize
   std::string _Normalize(absl::string_view text) {
     return $self->Normalize(text);
   }
 
-  std::pair<std::string, std::vector<size_t>> _NormalizeWithOffsets(absl::string_view text) {
+  std::pair<std::string, std::vector<size_t>> _NormalizeWithOffsets(
+      absl::string_view text) {
     std::pair<std::string, std::vector<size_t>> result;
     $self->Normalize(text, &result.first, &result.second).IgnoreError();
     return result;
@@ -729,25 +475,6 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
   // Calculate Entropy
   float _CalculateEntropy(absl::string_view text, float alpha)  {
     return $self->CalculateEntropy(text, alpha);
-  }
-
-  std::vector<float> _CalculateEntropyBatch(const std::vector<absl::string_view> &ins,
-                                            float alpha, int num_threads)  {
-    std::vector<float> outs(ins.size());
-    InitNumThreads(ins, &num_threads);
-    {
-      ThreadPool pool(ins.size());
-      std::atomic<size_t> index = 0;
-      for (int n = 0;  n < num_threads; ++n) {
-        pool.Schedule([&]() {
-           size_t i = 0;
-           while ((i = std::atomic_fetch_add(&index, 1)) < outs.size()) {
-             outs[i] = self->CalculateEntropy(ins[i], alpha);
-           }
-         });
-      }
-    }
-    return outs;
   }
 
   // override normalizer_spec
@@ -822,7 +549,8 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
              enable_sampling=None,
              nbest_size=None,
              alpha=None,
-             num_threads=None):
+             num_threads=None,
+             thread_pool=None):
     """Encode text input to segmented ids or tokens.
 
       Args:
@@ -842,6 +570,7 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
       alpha: Soothing parameter for unigram sampling, and merge probability for
              BPE-dropout (probablity 'p' in BPE-dropout paper).
       num_threads: the number of threads used in the batch processing (Default = -1).
+      thread_pool: shared thread pool object (Default = None)
     """
 
     if out_type is None:
@@ -877,16 +606,16 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
 
     if type(input) is list:
       if out_type is int:
-        return self._EncodeAsIdsBatch(input, num_threads, enable_sampling, nbest_size,
+        return self._EncodeAsIdsBatch(input, num_threads, thread_pool, enable_sampling, nbest_size,
                                       alpha, add_bos, add_eos, reverse, emit_unk_piece)
       if out_type is str:
-        return self._EncodeAsPiecesBatch(input, num_threads, enable_sampling, nbest_size,
+        return self._EncodeAsPiecesBatch(input, num_threads, thread_pool, enable_sampling, nbest_size,
                                          alpha, add_bos, add_eos, reverse, emit_unk_piece)
       if out_type == 'serialized_proto' or out_type == 'proto':
-        return self._EncodeAsSerializedProtoBatch(input, num_threads, enable_sampling, nbest_size,
+        return self._EncodeAsSerializedProtoBatch(input, num_threads, thread_pool, enable_sampling, nbest_size,
                                                   alpha, add_bos, add_eos, reverse, emit_unk_piece)
       if out_type == 'immutable_proto':
-        return self._EncodeAsImmutableProtoBatch(input, num_threads, enable_sampling, nbest_size,
+        return self._EncodeAsImmutableProtoBatch(input, num_threads, thread_pool, enable_sampling, nbest_size,
                                                  alpha, add_bos, add_eos, reverse, emit_unk_piece)
 
     if out_type is int:
@@ -1116,13 +845,102 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
     return self.SampleEncodeAndScore(input=input, num_samples=num_samples, alpha=alpha,
                                      out_type='immutable_proto', **kwargs)
 
+  def ParallelEncode(self,
+                     input,
+                     out_type=None,
+                     add_bos=None,
+                     add_eos=None,
+                     reverse=None,
+                     emit_unk_piece=None,
+                     chunk_len=None,
+                     num_threads=None,
+                     thread_pool=None):
+    """ParalellEncode text input to segmented ids or tokens.
 
-  def Decode(self, input, out_type=str, num_threads=None):
+      Args:
+      input: input string. accepsts list of string.
+      out_type: output type. int or str or 'serialized_proto' or 'immutable_proto'
+      add_bos: Add <s> to the result (Default = false)
+      add_eos: Add </s> to the result (Default = false) <s>/</s> is added after reversing (if enabled).
+      reverse: Reverses the tokenized sequence (Default = false)
+      emit_unk_piece: Emits the unk literal string (Default = false)
+      chunk_len: chunk size per thread (Default = None)
+      num_threads: the number of threads used in the batch processing (Default = -1).
+      thread_pool: shared thread pool object (Default = None)
+    """
+
+    if out_type is None:
+      out_type = self._out_type
+    if add_bos is None:
+      add_bos = self._add_bos
+    if add_eos is None:
+      add_eos = self._add_eos
+    if reverse is None:
+      reverse = self._reverse
+    if emit_unk_piece is None:
+      emit_unk_piece = self._emit_unk_piece
+    if num_threads is None:
+      num_threads = self._num_threads
+
+    if num_threads is None or type(num_threads) is not int:
+      raise RuntimeError('num_threads must be int')
+
+    if chunk_len is None or type(chunk_len) is not int or chunk_len <= 0:
+      raise RuntimeError('chunk_len must be positive.')
+
+    def _encode(text):
+      if out_type is int:
+        return self._ParallelEncodeAsIds(text, chunk_len, num_threads, thread_pool,
+                                         add_bos, add_eos, reverse, emit_unk_piece)
+
+      if out_type is str:
+        return self._ParallelEncodeAsPieces(text, chunk_len, num_threads, thread_pool,
+                                            add_bos, add_eos, reverse, emit_unk_piece)
+
+      if out_type == 'serialized_proto' or out_type == 'proto':
+        return self._ParallelEncodeAsSerializedProto(text, chunk_len, num_threads, thread_pool,
+                                                     add_bos, add_eos, reverse, emit_unk_piece)
+
+      if out_type == 'immutable_proto':
+        return self._ParallelEncodeAsImmutableProto(text, chunk_len, num_threads, thread_pool,
+                                                    add_bos, add_eos, reverse, emit_unk_piece)
+
+      raise RuntimeError('unknown output type')
+
+
+    if type(input) is list:
+      return [_encode(n) for n in input]
+
+    return _encode(input)
+
+
+  def ParallelEncodeAsPieces(self, input, **kwargs):
+    return self.ParallelEncode(input=input, out_type=str, **kwargs)
+
+
+  def ParallelEncodeAsIds(self, input, **kwargs):
+    return self.ParallelEncode(input=input, out_type=int, **kwargs)
+
+
+  def ParallelEncodeAsSerializedProto(self, input, **kwargs):
+    return self.ParallelEncode(input=input, out_type='serialized_proto', **kwargs)
+
+
+  def ParallelEncodeAsImmutableProto(self, input, **kwargs):
+    return self.ParallelEncode(input=input, out_type='immutable_proto', **kwargs)
+
+
+  def Decode(self,
+             input,
+             out_type=str,
+             num_threads=None,
+             thread_pool=None):
     """Decode processed id or token sequences.
 
     Args:
       out_type: output type. str, bytes or 'serialized_proto' or 'immutable_proto' (Default = str)
-      num_threads: the number of threads used in the batch processing (Default = -1).
+      num_threads: the number of threads used in the batch processing (Default = -1)
+      thread_pool: shared thread pool object (Default = None)
     """
 
     if num_threads is None:
@@ -1148,9 +966,9 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
 
         if type(input[0]) is list:
           if len(input[0]) == 0 or type(input[0][0]) is int:
-           return self._DecodeIdsBatch(input, num_threads)
+            return self._DecodeIdsBatch(input, num_threads, thread_pool)
           if type(input[0][0]) is str:
-           return self._DecodePiecesBatch(input, num_threads)
+            return self._DecodePiecesBatch(input, num_threads, thread_pool)
 
     if out_type is bytes:
       if type(input) is int:
@@ -1166,9 +984,9 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
 
         if type(input[0]) is list:
           if len(input[0]) == 0 or type(input[0][0]) is int:
-           return self._DecodeIdsAsBytesBatch(input, num_threads)
+           return self._DecodeIdsAsBytesBatch(input, num_threads, thread_pool)
           if type(input[0][0]) is str:
-           return self._DecodePiecesBatch(input, num_threads)
+           return self._DecodePiecesBatch(input, num_threads, thread_pool)
 
     if out_type == 'serialized_proto':
       if type(input) is int:
@@ -1184,9 +1002,9 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
 
         if type(input[0]) is list:
           if len(input[0]) == 0 or type(input[0][0]) is int:
-           return self._DecodeIdsAsSerializedProtoBatch(input, num_threads)
+           return self._DecodeIdsAsSerializedProtoBatch(input, num_threads, thread_pool)
           if type(input[0][0]) is str:
-           return self._DecodePiecesAsSerializedProtoBatch(input, num_threads)
+           return self._DecodePiecesAsSerializedProtoBatch(input, num_threads, thread_pool)
 
 
     if out_type == 'immutable_proto':
@@ -1203,9 +1021,9 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
 
         if type(input[0]) is list:
           if len(input[0]) == 0 or type(input[0][0]) is int:
-           return self._DecodeIdsAsImmutableProtoBatch(input, num_threads)
+           return self._DecodeIdsAsImmutableProtoBatch(input, num_threads, thread_pool)
           if type(input[0][0]) is str:
-           return self._DecodePiecesAsImmutableProtoBatch(input, num_threads)
+           return self._DecodePiecesAsImmutableProtoBatch(input, num_threads, thread_pool)
 
 
     raise RuntimeError('unknown output or input type')
@@ -1236,14 +1054,10 @@ inline void InitNumThreads(const std::vector<T> &ins, int *num_threads) {
     return self.Decode(input=input, out_type=out_type, **kwargs)
 
 
-  def CalculateEntropy(self, input, alpha, num_threads=None):
+  def CalculateEntropy(self, input, alpha):
     """Calculate sentence entropy"""
     if type(input) is list:
-      if num_threads is None:
-        num_threads = self._num_threads
-      if num_threads is None or type(num_threads) is not int:
-        raise RuntimeError('num_threads must be int')
-      return self._CalculateEntropyBatch(input, alpha, num_threads)
+      return [self._CalculateEntropy(x, alpha) for x in input]
 
     return self._CalculateEntropy(input, alpha)
 

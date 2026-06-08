@@ -138,6 +138,17 @@ UnicodeText UTF8ToUnicodeText(absl::string_view utf8);
 
 std::string UnicodeTextToUTF8(const UnicodeText &utext);
 
+struct UnicodeTextAndOffsets {
+  UnicodeText unicode_text;
+  std::vector<uint32_t> offsets;
+};
+
+// - unicode_text is the UTF-8 string converted to UnicodeText.
+// - offsets.size() == unicode_text.size() + 1
+// - offsets[0] is always 0.
+// - offsets[i] is the offset of unicode_text[i] in the original UTF-8 string.
+UnicodeTextAndOffsets UTF8ToUnicodeTextAndOffsets(absl::string_view utf8);
+
 }  // namespace string_util
 
 // other map/ptr utilties
@@ -349,59 +360,6 @@ void STLDeleteElements(std::vector<T *> *vec) {
   vec->clear();
 }
 }  // namespace port
-
-class ThreadPool {
- public:
-  explicit ThreadPool(int num_threads) {
-    threads_.reserve(num_threads);
-    for (int i = 0; i < num_threads; ++i) {
-      threads_.push_back(std::thread(&ThreadPool::WorkLoop, this));
-    }
-  }
-
-  ThreadPool(const ThreadPool &) = delete;
-  ThreadPool &operator=(const ThreadPool &) = delete;
-
-  ~ThreadPool() {
-    {
-      absl::MutexLock l(mu_);
-      for (size_t i = 0; i < threads_.size(); i++) {
-        queue_.push(nullptr);  // Shutdown signal.
-      }
-    }
-    for (auto &thread : threads_) thread.join();
-  }
-
-  void Schedule(absl::AnyInvocable<void()> func) {
-    absl::MutexLock l(mu_);
-    queue_.push(std::move(func));
-  }
-
- private:
-  bool WorkAvailable() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return !queue_.empty();
-  }
-
-  void WorkLoop() {
-    while (true) {
-      absl::AnyInvocable<void()> func;
-      {
-        absl::MutexLock l(mu_);
-        mu_.Await(absl::Condition(this, &ThreadPool::WorkAvailable));
-        func = std::move(queue_.front());
-        queue_.pop();
-      }
-      if (func == nullptr) {  // Shutdown signal.
-        break;
-      }
-      func();
-    }
-  }
-
-  absl::Mutex mu_;
-  std::queue<absl::AnyInvocable<void()>> queue_ ABSL_GUARDED_BY(mu_);
-  std::vector<std::thread> threads_;
-};
 
 namespace log_domain {
 
