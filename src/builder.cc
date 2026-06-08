@@ -245,14 +245,20 @@ util::Status Builder::DecompileCharsMap(absl::string_view blob,
   trie.set_array(const_cast<char *>(trie_blob.data()),
                  trie_blob.size() / trie.unit_size());
 
+  if (!trie.validate()) {
+    return util::InternalError(
+        "Trie data contains out-of-bounds node references.");
+  }
+
   std::string key;
+  bool value_out_of_range = false;
   std::function<void(size_t, size_t)> traverse;
 
   // Given a Trie node at `node_pos` and the key position at `key_position`,
   // Expands children nodes from `node_pos`.
   // When leaf nodes are found, stores them into `chars_map`.
-  traverse = [&traverse, &key, &trie, &normalized, &chars_map](
-                 size_t node_pos, size_t key_pos) -> void {
+  traverse = [&traverse, &key, &trie, &normalized, &chars_map,
+              &value_out_of_range](size_t node_pos, size_t key_pos) -> void {
     for (int c = 0; c <= 255; ++c) {
       key.push_back(static_cast<char>(c));
       size_t copied_node_pos = node_pos;
@@ -263,13 +269,20 @@ util::Status Builder::DecompileCharsMap(absl::string_view blob,
           key.data(), copied_node_pos, copied_key_pos, key.size());
       if (result >= -1) {   // node exists.
         if (result >= 0) {  // has a value after transition.
-          const absl::string_view value = normalized.data() + result;
-          Chars key_chars, value_chars;
-          for (const auto c : string_util::UTF8ToUnicodeText(key))
-            key_chars.push_back(c);
-          for (const auto c : string_util::UTF8ToUnicodeText(value))
-            value_chars.push_back(c);
-          (*chars_map)[key_chars] = value_chars;
+          // The value is an offset into `normalized`. A crafted charsmap can
+          // store an offset that points past the block, so bound it before
+          // dereferencing.
+          if (static_cast<size_t>(result) >= normalized.size()) {
+            value_out_of_range = true;
+          } else {
+            const absl::string_view value = normalized.data() + result;
+            Chars key_chars, value_chars;
+            for (const auto c : string_util::UTF8ToUnicodeText(key))
+              key_chars.push_back(c);
+            for (const auto c : string_util::UTF8ToUnicodeText(value))
+              value_chars.push_back(c);
+            (*chars_map)[key_chars] = value_chars;
+          }
         }
         // Recursively traverse.
         traverse(copied_node_pos, copied_key_pos);
@@ -279,6 +292,11 @@ util::Status Builder::DecompileCharsMap(absl::string_view blob,
   };
 
   traverse(0, 0);
+
+  if (value_out_of_range) {
+    return util::InternalError(
+        "Normalization rule value offset is out of range.");
+  }
 
   return util::OkStatus();
 }
