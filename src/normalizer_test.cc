@@ -14,11 +14,14 @@
 
 #include "normalizer.h"
 
+#include <set>
+#include <string>
 #include <vector>
 
 #include "builder.h"
 #include "sentencepiece_trainer.h"
 #include "testharness.h"
+#include "third_party/darts_clone/darts.h"
 #include "util.h"
 
 namespace sentencepiece {
@@ -391,6 +394,70 @@ TEST(NormalizerTest, EncodeDecodePrecompiledCharsMapTest) {
   EXPECT_FALSE(Normalizer::DecodePrecompiledCharsMap("", &trie_blob,
                                                      &normalized_blob, &buf)
                    .ok());
+}
+
+TEST(NormalizerTest, ManySharedPrefixesTest) {
+  // A precompiled charsmap loaded from a model is not subject to the
+  // build-time kMaxTrieResultsSize check, so its trie may have more
+  // shared-prefix rules than the on-stack result buffer can hold. Normalizing
+  // an input that matches all of them must not read past the buffer.
+  // More than Normalizer::kMaxTrieResultsSize (32) shared-prefix rules.
+  const int kNumKeys = 40;
+  std::vector<std::string> keys;
+  std::vector<const char *> kptr;
+  std::vector<int> values;
+  for (int i = 1; i <= kNumKeys; ++i) keys.emplace_back(std::string(i, 'a'));
+  for (auto &k : keys) {
+    kptr.push_back(k.c_str());
+    values.push_back(0);
+  }
+
+  Darts::DoubleArray trie;
+  ASSERT_EQ(0, trie.build(kptr.size(), const_cast<char **>(kptr.data()),
+                          nullptr, values.data()));
+  absl::string_view trie_blob(static_cast<const char *>(trie.array()),
+                              trie.size() * trie.unit_size());
+
+  std::string normalized_block = "a";
+  normalized_block += '\0';
+
+  // <trie size (4-byte little-endian uint32)><trie><normalized>
+  std::string blob;
+  const uint32_t tsize = static_cast<uint32_t>(trie_blob.size());
+  blob.append(reinterpret_cast<const char *>(&tsize), sizeof(tsize));
+  blob.append(trie_blob.data(), trie_blob.size());
+  blob.append(normalized_block.data(), normalized_block.size());
+
+  NormalizerSpec spec;
+  spec.set_precompiled_charsmap(blob);
+  spec.set_add_dummy_prefix(false);
+  spec.set_remove_extra_whitespaces(false);
+  spec.set_escape_whitespaces(false);
+
+  const Normalizer normalizer(spec);
+  ASSERT_TRUE(normalizer.status().ok());
+  // Matches all kNumKeys nested rules at position 0. Every rule maps to the
+  // single-character normalized form "a", so the output only contains 'a'.
+  const std::string input(kNumKeys, 'a');
+  const std::string output = normalizer.Normalize(input);
+  EXPECT_FALSE(output.empty());
+  EXPECT_EQ(std::string(output.size(), 'a'), output);
+}
+
+TEST(PrefixMatcherTest, ManySharedPrefixesTest) {
+  // PrefixMatcher builds its trie from a model's user-defined symbols, which
+  // can also exceed the on-stack result buffer.
+  std::vector<std::string> keys;
+  for (int i = 1; i <= 70; ++i) keys.emplace_back(std::string(i, 'b'));
+  std::set<absl::string_view> dic(keys.begin(), keys.end());
+
+  const PrefixMatcher matcher(dic);
+  bool found = false;
+  const std::string input(70, 'b');
+  const int mblen = matcher.PrefixMatch(input, &found);
+  EXPECT_TRUE(found);
+  EXPECT_GT(mblen, 0);
+  EXPECT_LE(mblen, static_cast<int>(input.size()));
 }
 
 TEST(NormalizerTest, StatusTest) {
