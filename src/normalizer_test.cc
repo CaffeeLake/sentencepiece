@@ -421,12 +421,10 @@ TEST(NormalizerTest, ManySharedPrefixesTest) {
   std::string normalized_block = "a";
   normalized_block += '\0';
 
-  // <trie size (4-byte little-endian uint32)><trie><normalized>
-  std::string blob;
-  const uint32_t tsize = static_cast<uint32_t>(trie_blob.size());
-  blob.append(reinterpret_cast<const char *>(&tsize), sizeof(tsize));
-  blob.append(trie_blob.data(), trie_blob.size());
-  blob.append(normalized_block.data(), normalized_block.size());
+  // EncodePrecompiledCharsMap stores the blob in little-endian, matching how a
+  // real model proto is serialised, so the test works on big-endian hosts too.
+  const std::string blob =
+      Normalizer::EncodePrecompiledCharsMap(trie_blob, normalized_block);
 
   NormalizerSpec spec;
   spec.set_precompiled_charsmap(blob);
