@@ -208,9 +208,16 @@ std::pair<absl::string_view, int> Normalizer::NormalizePrefix(
     Darts::DoubleArray::result_pair_type
         trie_results[Normalizer::kMaxTrieResultsSize];
 
-    const size_t num_nodes = trie_->commonPrefixSearch(
-        input.data(), trie_results, Normalizer::kMaxTrieResultsSize,
-        input.size());
+    // commonPrefixSearch returns the total number of matches, which can be
+    // larger than the buffer size (see darts.h). A precompiled charsmap loaded
+    // from an untrusted model is not subject to the build-time
+    // kMaxTrieResultsSize check, so cap the count to the buffer capacity before
+    // indexing trie_results.
+    const size_t num_nodes = std::min<size_t>(
+        trie_->commonPrefixSearch(input.data(), trie_results,
+                                  Normalizer::kMaxTrieResultsSize,
+                                  input.size()),
+        Normalizer::kMaxTrieResultsSize);
 
     // Finds the longest rule.
     for (size_t k = 0; k < num_nodes; ++k) {
@@ -340,8 +347,9 @@ int PrefixMatcher::PrefixMatch(absl::string_view w, bool *found) const {
 
   constexpr int kResultSize = 64;
   Darts::DoubleArray::result_pair_type trie_results[kResultSize];
-  const int num_nodes =
-      trie_->commonPrefixSearch(w.data(), trie_results, kResultSize, w.size());
+  const int num_nodes = std::min<int>(
+      trie_->commonPrefixSearch(w.data(), trie_results, kResultSize, w.size()),
+      kResultSize);
 
   if (found) *found = (num_nodes > 0);
   if (num_nodes == 0) {

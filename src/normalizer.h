@@ -97,6 +97,7 @@ class Normalizer {
 
  private:
   FRIEND_TEST(NormalizerTest, EncodeDecodePrecompiledCharsMapTest);
+  FRIEND_TEST(NormalizerTest, ManySharedPrefixesTest);
 
   void Init();
 
