@@ -20,6 +20,7 @@
 #include "sentencepiece_trainer.h"
 #include "testharness.h"
 #include "third_party/absl/strings/str_cat.h"
+#include "third_party/absl/strings/string_view.h"
 #include "util.h"
 
 namespace sentencepiece {
@@ -143,7 +144,7 @@ TEST(BuilderTest, CompileCharsMap) {
 TEST(BuilderTest, DecompileMalformedCharsMapTest) {
   // Assembles a precompiled charsmap from raw darts units and a normalized
   // block, matching the on-disk <size><trie><normalized> layout.
-  auto make_blob = [](const std::vector<uint32_t> &units,
+  auto make_blob = [](const std::vector<uint32_t>& units,
                       absl::string_view normalized) {
     std::string trie_blob;
     for (const uint32_t u : units)

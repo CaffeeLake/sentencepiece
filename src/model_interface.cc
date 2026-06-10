@@ -18,12 +18,13 @@
 
 #include "sentencepiece_model.pb.h"
 #include "third_party/absl/strings/str_format.h"
+#include "third_party/absl/strings/string_view.h"
 #include "util.h"
 
 namespace sentencepiece {
 
-ModelInterface::ModelInterface(const ModelProto &model_proto)
-    : model_proto_(&model_proto), status_(util::OkStatus()) {}
+ModelInterface::ModelInterface(const ModelProto& model_proto)
+    : model_proto_(&model_proto), status_(absl::OkStatus()) {}
 ModelInterface::~ModelInterface() {}
 
 #define RETURN_PIECE(name, default_value)                                \
@@ -69,7 +70,7 @@ void ModelInterface::InitializePieces() {
   int pieces_size = 0;
   int reserved_id_map_size = 0;
   for (int i = 0; i < model_proto_->pieces_size(); ++i) {
-    const auto &sp = model_proto_->pieces(i);
+    const auto& sp = model_proto_->pieces(i);
     static constexpr size_t kMaxPieceSize = 8192;
     if (sp.piece().size() >= kMaxPieceSize) {
       status_ = util::InternalError("piece size must be less than 8k.");
@@ -89,7 +90,7 @@ void ModelInterface::InitializePieces() {
   reserved_id_map_.reserve(reserved_id_map_size);
 
   for (int i = 0; i < model_proto_->pieces_size(); ++i) {
-    const auto &sp = model_proto_->pieces(i);
+    const auto& sp = model_proto_->pieces(i);
     if (sp.piece().empty()) {
       status_ = util::InternalError("piece must not be empty.");
       return;
@@ -159,8 +160,8 @@ void ModelInterface::InitializePieces() {
 std::vector<absl::string_view> SplitIntoWords(absl::string_view text,
                                               bool treat_ws_as_suffix,
                                               bool allow_ws_only_pieces) {
-  const char *begin = text.data();
-  const char *end = text.data() + text.size();
+  const char* begin = text.data();
+  const char* end = text.data() + text.size();
 
   // Space symbol (U+2581)
   constexpr absl::string_view kSpaceSymbol = "\xe2\x96\x81";
@@ -213,9 +214,9 @@ std::vector<absl::string_view> SplitIntoWords(absl::string_view text,
   return result;
 }
 
-const std::string &ByteToPiece(unsigned char c) {
-  static const std::vector<std::string> *const kBytePieces = []() {
-    auto *v = new std::vector<std::string>(256);
+const std::string& ByteToPiece(unsigned char c) {
+  static const std::vector<std::string>* const kBytePieces = []() {
+    auto* v = new std::vector<std::string>(256);
     for (int i = 0; i < 256; ++i) {
       (*v)[i] = absl::StrFormat("<0x%02X>", i);
     }
@@ -226,8 +227,8 @@ const std::string &ByteToPiece(unsigned char c) {
 
 int PieceToByte(absl::string_view piece) {
   using PieceToByteMap = absl::flat_hash_map<absl::string_view, unsigned char>;
-  static const auto *const kMap = []() -> PieceToByteMap * {
-    auto *m = new PieceToByteMap();
+  static const auto* const kMap = []() -> PieceToByteMap* {
+    auto* m = new PieceToByteMap();
     for (int i = 0; i < 256; ++i) {
       (*m)[ByteToPiece(i)] = i;
     }

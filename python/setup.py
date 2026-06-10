@@ -75,11 +75,20 @@ class build_ext_unix(_build_ext):
   def build_extension(self, ext):
     cflags, libs = get_cflags_and_libs('../build/root')
     abseil_libs = find_abseil_lib('../build/third_party')
+    if os.path.exists('../third_party/abseil-cpp'):
+      cflags.append('-I../third_party/abseil-cpp')
+      cflags.append('-I..')
 
     if len(libs) == 0:
       subprocess.check_call(['./build_bundled.sh', __version__])
       cflags, libs = get_cflags_and_libs('./build/root')
       abseil_libs = find_abseil_lib('./build/third_party')
+      if os.path.exists('./sentencepiece/third_party/abseil-cpp'):
+        cflags.append('-I./sentencepiece/third_party/abseil-cpp')
+        cflags.append('-I./sentencepiece')
+      elif os.path.exists('../third_party/abseil-cpp'):
+        cflags.append('-I../third_party/abseil-cpp')
+        cflags.append('-I..')
 
     # Fix compile on some versions of Mac OSX
     # See: https://github.com/neulab/xnmt/issues/199
