@@ -67,6 +67,11 @@ jobs:
       - name: Build wheels
         working-directory: python
         run: |
+          mkdir -p sentencepiece
+          for i in CMakeLists.txt cmake config.h.in sentencepiece.pc.in src third_party
+          do
+            cp -f -R "../${i}" sentencepiece/
+          done
           mkdir -p src/sentencepiece/package_data
           cp ../data/*.bin src/sentencepiece/package_data
           python -m cibuildwheel --output-dir wheelhouse
