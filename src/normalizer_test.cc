@@ -21,6 +21,8 @@
 #include "builder.h"
 #include "sentencepiece_trainer.h"
 #include "testharness.h"
+#include "third_party/absl/status/status.h"
+#include "third_party/absl/strings/string_view.h"
 #include "third_party/darts_clone/darts.h"
 #include "util.h"
 
@@ -153,7 +155,7 @@ TEST(NormalizerTest, NormalizeWithoutEscapeWhitespacesTest) {
 TEST(NormalizeTest, NomalizeWithSpaceContainedRules) {
   Builder::CharsMap charsmap;
 
-  auto AddRule = [&](const std::string &src, const std::string &trg) {
+  auto AddRule = [&](const std::string& src, const std::string& trg) {
     Builder::Chars src_chars, trg_chars;
     for (const char32 c : string_util::UTF8ToUnicodeText(src)) {
       src_chars.push_back(c);
@@ -244,8 +246,8 @@ TEST(NormalizeTest, NomalizeWithSpaceContainedRules) {
     bool add_dummy_prefix;
     bool remove_extra_whitespaces;
     bool escape_whitespaces;
-    const char *input;
-    const char *expected;
+    const char* input;
+    const char* expected;
   };
 
   constexpr SpacePattern kSpacePatternData[] = {
@@ -258,7 +260,7 @@ TEST(NormalizeTest, NomalizeWithSpaceContainedRules) {
       {true, false, false, " ", "  "},  {true, false, true, " ", WS WS},
       {true, true, false, " ", ""},     {true, true, true, " ", ""}};
 
-  for (const auto &c : kSpacePatternData) {
+  for (const auto& c : kSpacePatternData) {
     spec.set_add_dummy_prefix(c.add_dummy_prefix);
     spec.set_remove_extra_whitespaces(c.remove_extra_whitespaces);
     spec.set_escape_whitespaces(c.escape_whitespaces);
@@ -386,7 +388,7 @@ TEST(NormalizerTest, EncodeDecodePrecompiledCharsMapTest) {
       test_trie_blob, test_normalized_blob);
   std::string buf;
   absl::string_view trie_blob, normalized_blob;
-  util::Status status = Normalizer::DecodePrecompiledCharsMap(
+  absl::Status status = Normalizer::DecodePrecompiledCharsMap(
       blob, &trie_blob, &normalized_blob, &buf);
   ASSERT_TRUE(status.ok());
   EXPECT_EQ(test_trie_blob, trie_blob);
@@ -404,18 +406,18 @@ TEST(NormalizerTest, ManySharedPrefixesTest) {
   // More than Normalizer::kMaxTrieResultsSize (32) shared-prefix rules.
   const int kNumKeys = 40;
   std::vector<std::string> keys;
-  std::vector<const char *> kptr;
+  std::vector<const char*> kptr;
   std::vector<int> values;
   for (int i = 1; i <= kNumKeys; ++i) keys.emplace_back(std::string(i, 'a'));
-  for (auto &k : keys) {
+  for (auto& k : keys) {
     kptr.push_back(k.c_str());
     values.push_back(0);
   }
 
   Darts::DoubleArray trie;
-  ASSERT_EQ(0, trie.build(kptr.size(), const_cast<char **>(kptr.data()),
-                          nullptr, values.data()));
-  absl::string_view trie_blob(static_cast<const char *>(trie.array()),
+  ASSERT_EQ(0, trie.build(kptr.size(), const_cast<char**>(kptr.data()), nullptr,
+                          values.data()));
+  absl::string_view trie_blob(static_cast<const char*>(trie.array()),
                               trie.size() * trie.unit_size());
 
   std::string normalized_block = "a";

@@ -26,6 +26,7 @@
 #include "sentencepiece_model.pb.h"
 #include "sentencepiece_processor.h"
 #include "third_party/absl/container/flat_hash_map.h"
+#include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
 #include "third_party/darts_clone/darts.h"
 #include "util.h"
@@ -38,7 +39,7 @@ std::vector<absl::string_view> SplitIntoWords(
     bool allow_ws_only_pieces = false);
 
 // Converts byte (0-255) to piece (e.g., 58 -> "<0x3A>").
-const std::string &ByteToPiece(unsigned char c);
+const std::string& ByteToPiece(unsigned char c);
 
 // Converts piece to byte (e.g., "<0x3A>" -> 58). Returns -1 if `piece` is not
 // a valid byte piece.
@@ -61,18 +62,18 @@ class ModelInterface {
   absl::string_view pad_piece() const;
 
   // `model_proto` should not be deleted until ModelInterface is destroyed.
-  explicit ModelInterface(const ModelProto &model_proto);
+  explicit ModelInterface(const ModelProto& model_proto);
   ModelInterface() {}
 
   virtual ~ModelInterface();
 
   // Returns Status.
   // Encode/Decode functions are valid only when status is OK.
-  virtual util::Status status() const { return status_; }
+  virtual absl::Status status() const { return status_; }
 
-  virtual const ModelProto &model_proto() const { return *model_proto_; }
+  virtual const ModelProto& model_proto() const { return *model_proto_; }
 
-  virtual const normalizer::PrefixMatcher *prefix_matcher() const {
+  virtual const normalizer::PrefixMatcher* prefix_matcher() const {
     return matcher_.get();
   }
 
@@ -134,7 +135,7 @@ class ModelInterface {
 
   // Returns the string representation of vocab with `id`.
   // id must be 0 <= id < GetPieceSize().
-  virtual const std::string &IdToPiece(int id) const {
+  virtual const std::string& IdToPiece(int id) const {
     DCHECK_GE(id, 0);
     DCHECK_LT(id, model_proto_->pieces_size());
     return model_proto_->pieces(id).piece();
@@ -253,7 +254,7 @@ class ModelInterface {
     return (model_proto_->pieces(id).type() == ModelProto::SentencePiece::BYTE);
   }
 
-  const ModelProto *model_proto_ = nullptr;
+  const ModelProto* model_proto_ = nullptr;
 
   // PrefixMatcher for user defined symbols.
   std::unique_ptr<normalizer::PrefixMatcher> matcher_;
@@ -268,7 +269,7 @@ class ModelInterface {
   int unk_id_ = 0;
 
   // status.
-  util::Status status_;
+  absl::Status status_;
 };
 }  // namespace sentencepiece
 #endif  // MODEL_INTERFACE_H_
