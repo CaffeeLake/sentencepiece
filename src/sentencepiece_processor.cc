@@ -31,6 +31,8 @@
 #include "normalizer.h"
 #include "sentencepiece.pb.h"
 #include "third_party/absl/cleanup/cleanup.h"
+#include "third_party/absl/container/fixed_array.h"
+#include "third_party/absl/functional/function_ref.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/numbers.h"
 #include "third_party/absl/strings/str_cat.h"
@@ -471,12 +473,13 @@ absl::Status SentencePieceProcessor::Encode(absl::string_view input,
 }
 
 absl::Status SentencePieceProcessor::Decode(
-    const std::vector<std::string>& pieces, std::string* detokenized) const {
-  return Decode(ToPieceArray(pieces), detokenized);
+    absl::Span<const std::string> pieces, std::string* detokenized) const {
+  absl::FixedArray<absl::string_view, 128> views(pieces.begin(), pieces.end());
+  return Decode(views, detokenized);
 }
 
 absl::Status SentencePieceProcessor::Decode(
-    const std::vector<absl::string_view>& pieces,
+    absl::Span<const absl::string_view> pieces,
     std::string* detokenized) const {
   RET_CHECK_STATUS_STL(detokenized);
 
@@ -490,7 +493,7 @@ absl::Status SentencePieceProcessor::Decode(
   return absl::OkStatus();
 }
 
-absl::Status SentencePieceProcessor::Decode(const std::vector<int>& ids,
+absl::Status SentencePieceProcessor::Decode(absl::Span<const int> ids,
                                             std::string* detokenized) const {
   RET_CHECK_STATUS_STL(detokenized);
 
@@ -629,8 +632,9 @@ absl::Status SentencePieceProcessor::SampleEncodeAndScore(
 
 absl::Status SentencePieceProcessor::PopulateSentencePieceText(
     absl::string_view input, absl::string_view normalized,
-    const std::vector<size_t>& norm_to_orig, const EncodeResult& result,
-    SentencePieceText* spt, bool skip_surface) const {
+    absl::Span<const size_t> norm_to_orig, const EncodeResult& result,
+    SentencePieceText* spt, bool skip_surface,
+    size_t input_start_offset) const {
   size_t consumed = 0;
   bool is_prev_unk = false;
   for (const auto& p : result) {
@@ -646,15 +650,19 @@ absl::Status SentencePieceProcessor::PopulateSentencePieceText(
       auto* sp = spt->add_pieces();
       sp->set_piece(w.data(), w.size());
       sp->set_id(id);
-      sp->set_begin(norm_to_orig[consumed]);
-      sp->set_end(norm_to_orig[consumed]);
+      RET_CHECK_GE(norm_to_orig[consumed], input_start_offset);
+      const size_t orig_offset = norm_to_orig[consumed] - input_start_offset;
+      sp->set_begin(orig_offset);
+      sp->set_end(orig_offset);
     } else {
       const size_t begin = consumed;
       const size_t end = consumed + w.size();
       RET_CHECK_LT(begin, norm_to_orig.size());
       RET_CHECK_LT(end, norm_to_orig.size());
-      const size_t orig_begin = norm_to_orig[begin];
-      const size_t orig_end = norm_to_orig[end];
+      RET_CHECK_GE(norm_to_orig[begin], input_start_offset);
+      RET_CHECK_GE(norm_to_orig[end], input_start_offset);
+      const size_t orig_begin = norm_to_orig[begin] - input_start_offset;
+      const size_t orig_end = norm_to_orig[end] - input_start_offset;
       RET_CHECK_LE(orig_begin, input.size());
       RET_CHECK_LE(orig_end, input.size());
       RET_CHECK_LE(orig_begin, orig_end);
@@ -855,13 +863,13 @@ absl::Status SentencePieceProcessor::CalculateEntropy(absl::string_view input,
 }
 
 absl::Status SentencePieceProcessor::Decode(
-    const std::vector<std::string>& pieces, SentencePieceText* spt) const {
-  return Decode(ToPieceArray(pieces), spt);
+    absl::Span<const std::string> pieces, SentencePieceText* spt) const {
+  absl::FixedArray<absl::string_view, 128> views(pieces.begin(), pieces.end());
+  return Decode(views, spt);
 }
 
 absl::Status SentencePieceProcessor::Decode(
-    const std::vector<absl::string_view>& pieces,
-    SentencePieceText* spt) const {
+    absl::Span<const absl::string_view> pieces, SentencePieceText* spt) const {
   RET_CHECK_STATUS_PROTO(spt);
 
   absl::string_view unk_surface = kDefaultUnknownSymbol;
@@ -1006,9 +1014,9 @@ absl::Status SentencePieceProcessor::Decode(
   return absl::OkStatus();
 }
 
-absl::Status SentencePieceProcessor::Decode(const std::vector<int>& ids,
+absl::Status SentencePieceProcessor::Decode(absl::Span<const int> ids,
                                             SentencePieceText* spt) const {
-  std::vector<std::string> pieces;
+  std::vector<absl::string_view> pieces;
   const int num_pieces = GetPieceSize();
   pieces.reserve(ids.size());
   for (const int id : ids) {
@@ -1039,14 +1047,13 @@ void GetIthChunkBoundaries(
   chunk_boundaries = {start_index, end_index, overlap_index};
 }
 
-void GetChunkOfInput(const string_util::UnicodeText& input_unicode,
-                     const absl::string_view input,
+void GetChunkOfInput(const absl::string_view input,
                      const absl::string_view normalized,
-                     const std::vector<size_t>& norm_to_orig,
+                     absl::Span<const size_t> norm_to_orig,
                      const std::tuple<size_t, size_t, size_t>& chunk_boundaries,
                      absl::string_view& input_chunk,
                      absl::string_view& normalized_chunk,
-                     std::vector<size_t>& norm_to_orig_chunk) {
+                     absl::Span<const size_t>& norm_to_orig_chunk) {
   const size_t start_index = std::get<0>(chunk_boundaries);
   const size_t overlap_index = std::get<2>(chunk_boundaries);
   input_chunk = input.substr(start_index, overlap_index - start_index);
@@ -1063,14 +1070,12 @@ void GetChunkOfInput(const string_util::UnicodeText& input_unicode,
   normalized_chunk =
       absl::ClippedSubstr(normalized, normalized_start_index,
                           normalized_end_index - normalized_start_index);
-  norm_to_orig_chunk = std::vector<size_t>(
-      norm_to_orig.begin() +
-          std::min<int>(normalized_start_index, norm_to_orig.size()),
-      (norm_to_orig.begin() +
-       std::min<int>(normalized_end_index + 1, norm_to_orig.size())));
-  for (auto& it : norm_to_orig_chunk) {
-    it = it - start_index;
-  }
+  const size_t slice_start =
+      std::min<size_t>(normalized_start_index, norm_to_orig.size());
+  const size_t slice_end =
+      std::min<size_t>(normalized_end_index + 1, norm_to_orig.size());
+  norm_to_orig_chunk =
+      norm_to_orig.subspan(slice_start, slice_end - slice_start);
 }
 
 bool FindMatchingToken(const SentencePieceText_SentencePiece& current_piece,
@@ -1106,15 +1111,13 @@ bool FindMatchingToken(const SentencePieceText_SentencePiece& current_piece,
 }
 
 ABSL_ATTRIBUTE_COLD absl::Status ReparseBadRanges(
-    const std::vector<size_t>& bad_joins,
-    const string_util::UnicodeText& input_unicode,
-    const absl::string_view input, const absl::string_view normalized,
-    const std::vector<size_t>& norm_to_orig, Arena& arena,
-    const ModelInterface& model,
-    std::function<
-        absl::Status(absl::string_view input, absl::string_view normalized,
-                     const std::vector<size_t>& norm_to_orig,
-                     const EncodeResult& result, SentencePieceText* spt)>
+    const std::vector<size_t>& bad_joins, const absl::string_view input,
+    const absl::string_view normalized, absl::Span<const size_t> norm_to_orig,
+    Arena& arena, const ModelInterface& model,
+    absl::FunctionRef<absl::Status(
+        absl::string_view input, absl::string_view normalized,
+        absl::Span<const size_t> norm_to_orig, const EncodeResult& result,
+        SentencePieceText* spt, size_t input_start_offset)>
         populate_sentence_piece_text,
     std::vector<SentencePieceText*>& spt_chunks,
     std::vector<std::tuple<size_t, size_t, size_t>>& input_chunk_boundaries) {
@@ -1160,17 +1163,16 @@ ABSL_ATTRIBUTE_COLD absl::Status ReparseBadRanges(
 
     absl::string_view input_chunk;
     absl::string_view normalized_chunk;
-    std::vector<size_t> norm_to_orig_chunk;
+    absl::Span<const size_t> norm_to_orig_chunk;
 
     // Fetch text for this new larger chunk.
-    GetChunkOfInput(input_unicode, input, normalized, norm_to_orig,
-                    new_boundaries, input_chunk, normalized_chunk,
-                    norm_to_orig_chunk);
+    GetChunkOfInput(input, normalized, norm_to_orig, new_boundaries,
+                    input_chunk, normalized_chunk, norm_to_orig_chunk);
     auto encode_result = model.Encode(normalized_chunk);
     auto* new_chunk = arena.Create<SentencePieceText>(&arena);
-    RETURN_IF_ERROR(populate_sentence_piece_text(input_chunk, normalized_chunk,
-                                                 norm_to_orig_chunk,
-                                                 encode_result, new_chunk));
+    RETURN_IF_ERROR(populate_sentence_piece_text(
+        input_chunk, normalized_chunk, norm_to_orig_chunk, encode_result,
+        new_chunk, std::get<0>(new_boundaries)));
 
     // Insert the new chunk and new boundaries.
     new_spt_chunks.push_back(new_chunk);
@@ -1264,10 +1266,10 @@ absl::Status SentencePieceProcessor::ParallelEncodeInternal(
         for (size_t i = n; i < num_chunks; i += thread_pool.num_threads()) {
           absl::string_view input_chunk;
           absl::string_view normalized_chunk;
-          std::vector<size_t> norm_to_orig_chunk;
+          absl::Span<const size_t> norm_to_orig_chunk;
           GetIthChunkBoundaries(input_unicode, utf8_offsets, chunk_len, i,
                                 overlap, input_chunk_boundaries[i]);
-          GetChunkOfInput(input_unicode, input, normalized, norm_to_orig,
+          GetChunkOfInput(input, normalized, norm_to_orig,
                           input_chunk_boundaries[i], input_chunk,
                           normalized_chunk, norm_to_orig_chunk);
 
@@ -1275,7 +1277,8 @@ absl::Status SentencePieceProcessor::ParallelEncodeInternal(
           spt_chunks[i] = thread_arena->Create<SentencePieceText>(thread_arena);
           auto status = PopulateSentencePieceText(
               input_chunk, normalized_chunk, norm_to_orig_chunk, encode_result,
-              spt_chunks[i], /*skip_surface=*/true);
+              spt_chunks[i], /*skip_surface=*/true,
+              std::get<0>(input_chunk_boundaries[i]));
           // Can be optimized to cancel all other threads but then it would be
           // better to switch to absl::StatusBundle..
           if (!status.ok()) {
@@ -1372,13 +1375,14 @@ absl::Status SentencePieceProcessor::ParallelEncodeInternal(
     }
 
     RETURN_IF_ERROR(ReparseBadRanges(
-        bad_joins, input_unicode, input, normalized, norm_to_orig, arena,
-        *model_,
+        bad_joins, input, normalized, norm_to_orig, arena, *model_,
         [this](absl::string_view input, absl::string_view normalized,
-               const std::vector<size_t>& norm_to_orig,
-               const EncodeResult& result, SentencePieceText* spt) {
+               absl::Span<const size_t> norm_to_orig,
+               const EncodeResult& result, SentencePieceText* spt,
+               size_t input_start_offset) {
           return PopulateSentencePieceText(input, normalized, norm_to_orig,
-                                           result, spt);
+                                           result, spt, /*skip_surface=*/false,
+                                           input_start_offset);
         },
         spt_chunks, input_chunk_boundaries));
   }

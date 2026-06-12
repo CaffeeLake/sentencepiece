@@ -92,10 +92,10 @@ Trainer::Symbol* Trainer::GetPairSymbol(const Symbol* left,
 }
 
 void Trainer::ComputeFreq(Symbol* symbol) const {
-  if (symbol->freq > 0) {  // if freq == 0, re-computation is required.
+  if (!symbol->needs_recomputation) {
     return;
   }
-  CHECK_EQ(0, symbol->freq);
+  symbol->freq = 0;
   for (auto it = symbol->positions.begin(); it != symbol->positions.end();) {
     const Position pos = DecodePos(*it);
     // symbols_[sid][left] and symbols_[sid]right] must store
@@ -108,6 +108,7 @@ void Trainer::ComputeFreq(Symbol* symbol) const {
       ++it;
     }
   }
+  symbol->needs_recomputation = false;
 }
 
 int Trainer::GetNextIndex(int sid, int index) const {
@@ -130,8 +131,11 @@ void Trainer::AddNewPair(int sid, int left, int right) {
   if (left == -1 || right == -1) return;
   auto* symbol = GetPairSymbol(symbols_[sid][left], symbols_[sid][right]);
   if (symbol != nullptr) {
-    active_symbols_.insert(symbol);
     symbol->positions.insert(EncodePos(sid, left, right));
+    if (!symbol->pending) {
+      symbol->pending = true;
+      pending_queue_.push_back(symbol);
+    }
   }
 }
 
@@ -139,7 +143,7 @@ void Trainer::ResetFreq(int sid, int left, int right, const Symbol* best) {
   if (left == -1 || right == -1) return;
   auto* symbol = GetPairSymbol(symbols_[sid][left], symbols_[sid][right]);
   if (symbol != nullptr && symbol != best) {
-    symbol->freq = 0;
+    symbol->needs_recomputation = true;
   }
 }
 
@@ -177,41 +181,9 @@ absl::Status Trainer::AcceptSymbol(Symbol* symbol) {
 
   // Removes best_symbol so it is not selected again.
   symbols_cache_.erase(symbol->fp);
-  active_symbols_.erase(symbol);
+  symbol->active = false;
 
   return absl::OkStatus();
-}
-
-void Trainer::UpdateActiveSymbols() {
-  std::vector<Symbol*> symbols;
-  for (auto& it : symbols_cache_) {
-    Symbol* symbol = it.second;
-    if (symbol->IsBigram()) {
-      ComputeFreq(symbol);
-      symbols.push_back(symbol);
-    }
-  }
-
-  // At least kMinActiveSymbolsSize symbols must be in |active_symbols_|.
-  constexpr int kMinActiveSymbolsSize = 1000;
-
-  // Keeps top 5% frequent symbols.
-  constexpr float kTopFrequentRatio = 0.05;
-  const int size =
-      std::min<int>(std::max<int>(kMinActiveSymbolsSize,
-                                  symbols_cache_.size() * kTopFrequentRatio),
-                    symbols.size());
-
-  if (size > 0) {
-    std::partial_sort(
-        symbols.begin(), symbols.begin() + size, symbols.end(),
-        [](Symbol* s1, Symbol* s2) { return s1->freq > s2->freq; });
-    LOG(INFO) << "Updating active symbols. max_freq=" << symbols.front()->freq
-              << " min_freq=" << symbols.back()->freq;
-  }
-
-  active_symbols_.clear();
-  active_symbols_.insert(symbols.begin(), symbols.begin() + size);
 }
 
 absl::Status Trainer::Train() {
@@ -229,7 +201,8 @@ absl::Status Trainer::Train() {
   symbols_.clear();
   allocated_.clear();
   symbols_cache_.clear();
-  active_symbols_.clear();
+  pq_ = decltype(pq_)();
+  pending_queue_.clear();
 
   // Load all sentences
   RETURN_IF_ERROR(LoadSentences());
@@ -271,6 +244,13 @@ absl::Status Trainer::Train() {
     }
   }
 
+  for (Symbol* symbol : pending_queue_) {
+    symbol->pending = false;
+    ComputeFreq(symbol);
+    pq_.push({symbol->freq, symbol});
+  }
+  pending_queue_.clear();
+
   const int vocab_size =
       trainer_spec_.vocab_size() - meta_pieces_.size() - required_chars_.size();
   RET_CHECK_GE(vocab_size, 0);
@@ -283,26 +263,27 @@ absl::Status Trainer::Train() {
   // Main loop.
   RET_CHECK(final_pieces_.empty());
   while (final_pieces_.size() < static_cast<size_t>(vocab_size)) {
-    constexpr int kUpdateActiveSymbolsInterval = 100;
-    if (final_pieces_.size() % kUpdateActiveSymbolsInterval == 0) {
-      UpdateActiveSymbols();
-    }
-
-    // Scanning active symbols, finds the best_symbol with highest freq.
     Symbol* best_symbol = nullptr;
-    for (auto& it : active_symbols_) {
-      Symbol* symbol = it;
-      ComputeFreq(symbol);
-      // If the frequency is the same, take shorter symbol.
-      // if the length is the same, use lexicographical comparison
-      if (best_symbol == nullptr ||
-          (symbol->freq > best_symbol->freq ||
-           (symbol->freq == best_symbol->freq &&
-            (symbol->chars.size() < best_symbol->chars.size() ||
-             (symbol->chars.size() == best_symbol->chars.size() &&
-              symbol->ToString() < best_symbol->ToString()))))) {
-        best_symbol = symbol;
+    while (!pq_.empty()) {
+      QueueEntry entry = pq_.top();
+      Symbol* symbol = entry.symbol;
+      if (!symbol->active) {
+        pq_.pop();
+        continue;
       }
+      if (entry.freq != symbol->freq) {
+        pq_.pop();
+        continue;
+      }
+      if (symbol->needs_recomputation) {
+        pq_.pop();
+        ComputeFreq(symbol);
+        pq_.push({symbol->freq, symbol});
+        continue;
+      }
+      best_symbol = symbol;
+      pq_.pop();
+      break;
     }
 
     if (best_symbol == nullptr) {
@@ -313,7 +294,7 @@ absl::Status Trainer::Train() {
     if (!dup.insert(best_symbol->ToString()).second) {
       // Removes best_symbol so it is not selected again.
       symbols_cache_.erase(best_symbol->fp);
-      active_symbols_.erase(best_symbol);
+      best_symbol->active = false;
       continue;
     }
 
@@ -324,12 +305,20 @@ absl::Status Trainer::Train() {
     if (final_pieces_.size() % 20 == 0) {
       LOG(INFO) << "Added: freq=" << best_symbol->freq
                 << " size=" << final_pieces_.size()
-                << " all=" << symbols_cache_.size()
-                << " active=" << active_symbols_.size()
+                << " all=" << symbols_cache_.size() << " active=" << pq_.size()
                 << " piece=" << best_symbol->ToString();
     }
 
     RETURN_IF_ERROR(AcceptSymbol(best_symbol));
+
+    for (Symbol* symbol : pending_queue_) {
+      symbol->pending = false;
+      if (symbol->active) {
+        ComputeFreq(symbol);
+        pq_.push({symbol->freq, symbol});
+      }
+    }
+    pending_queue_.clear();
   }  // end of main loop
 
   // Adds required_chars_

@@ -17,6 +17,7 @@
 
 #include <cstdint>
 #include <limits>
+#include <queue>
 #include <string>
 #include <vector>
 
@@ -51,12 +52,16 @@ class Trainer : public TrainerInterface {
  private:
   // Symbol represents a character or symbol bigram.
   struct Symbol {
-    const Symbol* left;              // left symbol in bigram
-    const Symbol* right;             // right symbol in bigram
+    const Symbol* left = nullptr;    // left symbol in bigram
+    const Symbol* right = nullptr;   // right symbol in bigram
     string_util::UnicodeText chars;  // all flattend chracter sequence
-    bool is_unk;                     // true if this symbol is unknown.
-    uint64_t fp;                     // fingerprint of this symbol.
-    uint64_t freq;                   // frequency of this symbol.
+    uint64_t fp = 0;                 // fingerprint of this symbol.
+    uint64_t freq = 0;               // frequency of this symbol.
+    bool is_unk = false;             // true if this symbol is unknown.
+    bool active = true;              // true if this symbol is active.
+    bool pending = false;            // true if this symbol is pending push.
+    bool needs_recomputation =
+        true;  // true if this symbol needs recomputation.
 
     // Position list. Use set so that we can keep the order of occurrence.
     // See EncodePos/DecodePos.
@@ -64,7 +69,7 @@ class Trainer : public TrainerInterface {
 
     bool IsBigram() const { return left != nullptr && right != nullptr; }
     std::string ToString() const;
-    Symbol() : left(nullptr), right(nullptr), is_unk(false), fp(0), freq(0) {}
+    Symbol() = default;
   };
 
   struct Position {
@@ -120,15 +125,29 @@ class Trainer : public TrainerInterface {
 
   absl::Status AcceptSymbol(Symbol* symbol);
 
-  // Updates |active_symbols_| by copying the top 5% frequent symbols in
-  // symbols_cache_.
-  void UpdateActiveSymbols();
-
   // All unique symbols. Key is a fingerprint of Symbol.
   absl::flat_hash_map<uint64_t, Symbol*> symbols_cache_;
 
-  // Set of symbols from which we find the best symbol in each iteration.
-  absl::btree_set<Symbol*> active_symbols_;
+  struct QueueEntry {
+    uint64_t freq;
+    Symbol* symbol;
+  };
+
+  struct QueueEntryComparator {
+    bool operator()(const QueueEntry& e1, const QueueEntry& e2) const {
+      if (e1.freq != e2.freq) {
+        return e1.freq < e2.freq;
+      }
+      if (e1.symbol->chars.size() != e2.symbol->chars.size()) {
+        return e1.symbol->chars.size() > e2.symbol->chars.size();
+      }
+      return e1.symbol->chars > e2.symbol->chars;
+    }
+  };
+
+  std::priority_queue<QueueEntry, std::vector<QueueEntry>, QueueEntryComparator>
+      pq_;
+  std::vector<Symbol*> pending_queue_;
 
   // Stores symbols allocated in heap so that we can delete them at onece.
   std::vector<Symbol*> allocated_;

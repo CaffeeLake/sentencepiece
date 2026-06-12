@@ -133,6 +133,11 @@ class ModelInterface {
   // Returns UNK(0) if `piece` is unknown
   virtual int PieceToId(absl::string_view piece) const;
 
+  // Returns the vocab id of `piece`.
+  // Returns UNK(0) if `piece` is unknown
+  // It does not use reserved_id_map_ for the optimization sake
+  int PieceToIdNoReserved(absl::string_view piece) const;
+
   // Returns the string representation of vocab with `id`.
   // id must be 0 <= id < GetPieceSize().
   virtual const std::string& IdToPiece(int id) const {
@@ -211,7 +216,7 @@ class ModelInterface {
   }
 
  protected:
-  void InitializePieces();
+  void InitializePieces(bool use_reserved_id_map = true);
 
   // Non-virtual (inlined) implementation for faster execution.
   inline float GetScoreInlined(int id) const {

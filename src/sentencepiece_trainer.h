@@ -22,6 +22,7 @@
 #include "sentencepiece_processor.h"
 #include "third_party/absl/status/status.h"
 #include "third_party/absl/strings/string_view.h"
+#include "third_party/absl/types/span.h"
 
 namespace sentencepiece {
 
